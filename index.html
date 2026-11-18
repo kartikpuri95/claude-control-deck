@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Claude Control Deck</title>
+<link rel="icon" id="fav" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<style>
+/* Candy dark: soft plum base, pink / mint / sky accents, rounded type, firm corners. */
+:root{
+  --bg:#111113; --bg2:#151518; --panel:#19191c; --panel2:#1f1f23; --line:#26262b; --line2:#34343a;
+  --fg:#e0e0e6; --fg2:#adadb7; --fg3:#7e7e89; --hi:#f4f4f7;
+  --accent:#6b94e8; --accent-dim:rgba(107,148,232,.16); --accent-ink:#ffffff;
+  --live:#5fbf95; --work:#d9a441; --idle:#7c8aa5; --dead:#d96a6a; --me:#6b94e8; --ok:#5fbf95; --sky:#8db4f0;
+  --display:"Inter",system-ui,sans-serif;
+  --body:"Inter",system-ui,-apple-system,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:8px; --r2:12px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 var(--body)}
+.wrap{max-width:none;margin:0;padding:8px 10px 10px;position:relative;z-index:1;display:flex;flex-direction:column;height:100vh;box-sizing:border-box}
+.rail{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);padding:0 12px;height:40px;border-radius:var(--r2);flex:0 0 auto;min-width:0}
+.logo{width:26px;height:26px;flex:0 0 auto}
+.brand{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap}
+.brand h1{font:500 14px/1 var(--display);margin:0;color:var(--hi);letter-spacing:-.01em}
+.brand h1 span{color:var(--accent)}
+.brand small{font:11px var(--body);color:var(--fg3);overflow:hidden;text-overflow:ellipsis;max-width:34vw}
+.kpis{display:flex;gap:14px;margin-left:auto;white-space:nowrap;font:12px var(--body);color:var(--fg3)}
+.kpi b{font:500 13px var(--display);color:var(--fg);font-variant-numeric:tabular-nums;margin-right:1px}
+.kpi.live b{color:var(--live)} .kpi.work b{color:var(--work)} .kpi.dead b{color:var(--dead)} .kpi.tmux b{color:var(--sky)}
+.clock{font:11.5px var(--mono);color:var(--fg3);border-left:1px solid var(--line2);padding-left:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.clock b{color:var(--fg);font-weight:500}
+.clock .err{color:var(--dead)}
+.rail .btn{padding:3px 9px;font-size:12px;height:24px;line-height:1}
+.rail #helpbtn{width:24px;padding:0}
+.side{display:flex;flex-direction:column;gap:8px;min-height:0}
+.side input{background:var(--panel);border:1px solid var(--line);color:var(--fg);padding:6px 10px;border-radius:6px;font:13px var(--body)}
+.side input::placeholder{color:var(--fg3)}
+.side input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim)}
+.strip{display:flex;flex-direction:column;gap:1px;flex:1;min-height:0;overflow:auto;scrollbar-width:thin;padding-right:2px}
+.strip h4{margin:10px 0 3px 8px;font:500 11px var(--body);color:var(--fg3);letter-spacing:.02em}
+.strip h4:first-child{margin-top:0}
+.chip{display:flex;align-items:center;gap:6px;border:1px solid transparent;background:transparent;padding:4px 8px;border-radius:6px;cursor:pointer;width:100%;text-align:left;color:inherit;font-family:var(--body);height:26px}
+.chip:hover,.chip:focus-visible{background:var(--panel);outline:none}
+.chip.on{background:var(--accent-dim);border-color:rgba(107,148,232,.35)}
+.chip .r{font-size:13px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.chip.on .r{color:var(--hi)}
+.chip .wk{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--work);margin-left:6px;vertical-align:middle;animation:pulse 1.6s ease-in-out infinite}
+.chip .pin{border:0;background:transparent;color:var(--fg3);padding:2px;width:18px;height:18px;border-radius:4px;cursor:pointer;opacity:0;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+.chip .pin svg{width:12px;height:12px}
+.chip:hover .pin,.chip .pin:focus-visible{opacity:.8}
+.chip .pin:hover{color:var(--hi);background:var(--panel2);opacity:1}
+.chip.pinned .pin{opacity:.9;color:var(--accent)}
+.chip .c{font-size:11px;color:var(--fg3);flex:0 0 auto;font-variant-numeric:tabular-nums}
+.sidefoot{display:flex;gap:6px;flex-wrap:wrap}
+.sidefoot .btn{font-size:12px;padding:6px 10px}
+.sidefoot .btn.danger.arm{background:var(--dead);color:var(--hi)}
+.main{display:grid;grid-template-columns:184px minmax(0,1fr) 320px;gap:10px;margin-top:8px;align-items:stretch;flex:1;min-height:0}
+.rail{flex:0 0 auto}
+.center{display:flex;flex-direction:column;min-width:0;min-height:0;gap:8px}
+.tabbar{display:flex;align-items:center;gap:8px;min-width:0}
+.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
+.tab{flex:0 0 auto;display:flex;align-items:center;gap:7px;background:var(--panel);color:var(--fg2);border:1px solid var(--line);border-radius:var(--r);padding:6px 10px 6px 12px;font:500 13px var(--body);cursor:pointer;max-width:220px;white-space:nowrap}
+.tab{position:relative;overflow:hidden}
+.tab::after{content:"";position:absolute;left:10px;right:10px;bottom:0;height:2px;border-radius:2px 2px 0 0;background:var(--s);opacity:.7}
+.tab .nm{overflow:hidden;text-overflow:ellipsis}
+.tab:hover{color:var(--hi);border-color:var(--line2)}
+.tab.on{background:var(--panel2);color:var(--hi);border-color:rgba(107,148,232,.55)}
+.tab.closed{opacity:.6;border-style:dashed;border-color:var(--line)}
+.tab .x{border:0;background:transparent;color:var(--fg3);font:14px/1 var(--body);padding:0 2px;cursor:pointer;border-radius:3px}
+.tab .x:hover{color:var(--hi);background:var(--dead)}
+.tabnew{padding:5px 10px;font-size:15px;line-height:1}
+.seg{display:flex;background:var(--panel);border-radius:var(--r);overflow:hidden;padding:3px;gap:2px;flex:0 0 auto}
+.seg button{background:transparent;border:0;color:var(--fg2);padding:4px 8px;font:500 12px var(--body);cursor:pointer;border-radius:5px}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.panel{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:var(--r2);padding:12px 16px 14px}
+.panel .head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.panel .ttl{font:600 16px/1.2 var(--display);margin:0;color:var(--hi);overflow-wrap:anywhere}
+.panel .sub{font:12.5px var(--body);color:var(--fg2);overflow-wrap:anywhere;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.panel .head .seg{margin-left:auto}
+.panel .head .btn{padding:5px 11px;font-size:12.5px}
+.right{display:flex;flex-direction:column;gap:10px;overflow:auto;min-height:0;scrollbar-width:thin;background:var(--panel);border:1px solid var(--line);border-radius:var(--r2);padding:14px 16px}
+.right h2{font:500 13px var(--body);color:var(--fg3);margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.right h2 .btn{margin-left:auto;padding:3px 9px;font-size:12px}
+.explorer{display:flex;flex-direction:column;flex:1;min-height:200px;gap:6px}
+.xtabs{display:flex;align-items:center;gap:2px;border-bottom:1px solid var(--line);margin:-2px 0 2px}
+.xtabs [data-x]{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--fg3);font:500 12.5px var(--body);padding:4px 10px 6px;cursor:pointer;margin-bottom:-1px}
+.xtabs [data-x].on{color:var(--hi);border-bottom-color:var(--accent)}
+.xtabs [data-x]:hover{color:var(--fg)}
+.xtabs .n{font:11px var(--mono);color:var(--work);margin-left:2px}
+.xtabs .btn{margin-left:auto;padding:1px 8px;font-size:12px}
+.tree[hidden],.cwrap[hidden]{display:none}
+.cwrap{display:flex;flex-direction:column;flex:1;min-height:0;gap:6px}
+.cact{display:flex;gap:6px;flex-wrap:wrap}.cact .btn{padding:3px 9px;font-size:12px}
+.cwrap #ctree{flex:1}
+.ch{font:500 12px var(--body);color:var(--fg3);margin-top:4px}
+.dlog{max-height:180px;overflow:auto;scrollbar-width:thin}
+.te .cc{margin-left:auto;font:10.5px var(--mono);color:var(--fg3);padding-left:8px}
+.sec{flex:0 0 auto;border-top:1px solid var(--line);padding-top:10px}
+.sec summary{cursor:pointer;font:500 13px var(--body);color:var(--fg3);list-style:none;display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.sec summary::before{content:"▸";font-size:11px}
+.sec[open] summary::before{content:"▾"}
+.sec summary::-webkit-details-marker{display:none}
+.tree{font:12.5px var(--body);color:var(--fg2);flex:1;min-height:0;overflow:auto;scrollbar-width:thin;border:1px solid var(--line);border-radius:var(--r);background:var(--bg2);padding:4px 0;user-select:none}
+.te{--d:0;position:relative;display:flex;align-items:center;gap:5px;height:22px;padding:0 8px 0 calc(8px + var(--d)*14px);cursor:pointer;white-space:nowrap;overflow:hidden;line-height:22px}
+.te::before{content:"";position:absolute;top:0;bottom:0;left:calc(14px + var(--d)*14px - 14px);width:1px;background:var(--line2);opacity:.6}
+.te[style*="--d:0"]::before{display:none}
+.te:hover{background:var(--panel2);color:var(--hi)}
+.te.sel{background:var(--accent-dim);color:var(--hi);box-shadow:inset 2px 0 0 rgba(107,148,232,.7)}
+.te .tw{width:14px;height:14px;color:var(--fg3);flex:0 0 auto;display:flex;align-items:center}
+.te .tw svg{width:14px;height:14px}
+.te .fi{width:16px;height:16px;flex:0 0 auto}
+.te .tn{overflow:hidden;text-overflow:ellipsis}
+.te.dir .tn{color:var(--fg)}
+.te.st-M .tn{color:#d4b584}.te.st-U .tn{color:#7fbf98}.te.st-A .tn{color:#7fbf98}.te.st-D .tn{color:#d86b6b;text-decoration:line-through}
+.te .ts{margin-left:auto;font:11px var(--mono);padding-left:8px}
+.te.st-M .ts{color:#e2c08d}.te.st-U .ts,.te.st-A .ts{color:#73c991}.te.st-D .ts{color:#f14c4c}
+.gitline{font:12px var(--mono);color:var(--fg2);margin-bottom:8px;overflow-wrap:anywhere}
+.gitline b{color:var(--sky);font-weight:500}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:12px 0 0;font:12.5px var(--mono);font-variant-numeric:tabular-nums}
+.kv dt{color:var(--fg3);font:12.5px var(--body);padding-top:1px}
+.kv dd{margin:0;color:var(--fg);overflow-wrap:anywhere;min-width:0}
+.btn{background:var(--panel2);border:1px solid var(--line2);color:var(--fg);padding:7px 13px;border-radius:var(--r);font:500 13px var(--body);cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent);color:var(--hi)}
+.btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.ghost{background:transparent;border-color:var(--line2);color:var(--fg2)}
+.btn.ghost:hover{background:var(--panel2);color:var(--fg)}
+.btn.go{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.go:hover{filter:brightness(1.08)}
+.btn.danger{background:transparent;border-color:rgba(255,107,107,.5);color:var(--dead)}
+.btn.danger:hover{background:var(--dead);color:var(--hi);border-color:var(--dead)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.quote{margin:0;border-left:3px solid var(--line2);padding:6px 12px;color:var(--fg);font-size:13px;overflow-wrap:anywhere;white-space:pre-wrap;max-height:9em;overflow:auto}
+.quote small{display:block;font:11px var(--body);color:var(--fg3);margin-bottom:3px}
+.quote.me{border-color:var(--me)}
+.hint{font:12.5px var(--body);color:var(--fg3);margin-top:10px;line-height:1.6}
+.hint b{color:var(--work);font-weight:500}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px}
+.tile{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;min-width:0}
+.tile b{display:block;font:500 17px/1.1 var(--display);font-variant-numeric:tabular-nums;color:var(--hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile b.ac{color:var(--accent)} .tile b.wn{color:var(--work)} .tile b.ok{color:var(--ok)}
+.tile i{display:block;font:11.5px var(--body);color:var(--fg3);margin-top:2px;font-style:normal}
+.ctx{grid-column:1/-1;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px}
+.ctx .bar{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;margin-top:6px}
+.ctx .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--sky));border-radius:4px}
+.ctx .bar i.wn{background:var(--work)}
+.ctx .bar i.bad{background:var(--dead)}
+.ctx small{font:12px var(--body);color:var(--fg3);display:flex;justify-content:space-between}
+.tools-used{grid-column:1/-1;font:12.5px var(--body);color:var(--fg2);display:flex;flex-wrap:wrap;gap:6px}
+.tools-used span{background:var(--bg2);padding:2px 9px;border-radius:4px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tools-used span b{color:var(--hi);font-weight:500}
+.spark{display:flex;align-items:flex-end;gap:3px;height:32px}
+.spark i{flex:1;background:var(--line2);border-radius:2px 2px 0 0;min-height:2px}
+.spark i.hot{background:var(--sky)}
+.composer{display:flex;flex-direction:column;gap:8px;margin-top:8px;flex:0 0 auto}
+.composer textarea{width:100%;min-height:56px;resize:vertical;background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);color:var(--fg);padding:10px 12px;font:13.5px/1.5 var(--body)}
+.composer textarea::placeholder{color:var(--fg3)}
+.composer textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim)}
+.composer .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.acwrap{position:relative}
+.ac{position:absolute;left:0;right:0;bottom:100%;margin-bottom:4px;background:var(--panel2);border:1px solid var(--line2);border-radius:var(--r);max-height:260px;overflow:auto;z-index:5;box-shadow:0 12px 30px -10px rgba(0,0,0,.7)}
+.ac[hidden]{display:none}
+.ac div{padding:6px 12px;font:13px var(--mono);color:var(--fg);cursor:pointer;display:flex;gap:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ac div small{color:var(--fg3);font:11px var(--body);margin-left:auto}
+.ac div.on{background:var(--accent);color:var(--accent-ink)}.ac div.on small{color:#dbe6ff}
+.attach{display:flex;gap:6px;flex-wrap:wrap}.attach:empty{display:none}
+.attach figure{margin:0;position:relative;width:64px;height:64px;border-radius:var(--r);overflow:hidden;border:1px solid var(--line2);background:var(--bg2)}
+.attach img{width:100%;height:100%;object-fit:cover}
+.attach button{position:absolute;top:2px;right:2px;width:18px;height:18px;border:0;border-radius:4px;background:rgba(0,0,0,.6);color:var(--hi);font:12px/1 var(--body);cursor:pointer}
+.composer .st{font:12.5px var(--body);color:var(--fg3);margin-left:auto}
+.composer .st.ok{color:var(--ok)} .composer .st.bad{color:var(--dead)}
+.cmd{display:flex;gap:8px;min-width:0}
+.cmd code{flex:1;min-width:0;background:var(--bg2);border-radius:var(--r);padding:9px 11px;font:12px/1.4 var(--mono);color:var(--sky);overflow-x:auto;white-space:nowrap}
+.chat{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r2);flex:1;min-height:160px;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin}
+.term{font-variant-ligatures:none;background:#121215;border:1px solid var(--line);border-radius:var(--r2);flex:1;min-height:160px;overflow:auto;padding:12px 14px;font:12.5px/1.45 var(--mono);color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere;scrollbar-width:thin;margin:0}
+.term[hidden],.chat[hidden],.diffv[hidden]{display:none}
+.diffv{flex:1;min-height:160px;display:flex;flex-direction:column;min-width:0}
+.diffv .dbody{flex:1}
+.dc{display:flex;align-items:center;gap:8px;height:24px;padding:0 6px;font-size:12px;color:var(--fg2);white-space:nowrap;overflow:hidden}
+.dc code{font:11px var(--mono);color:var(--sky);flex:0 0 auto}.dc .tn{overflow:hidden;text-overflow:ellipsis;flex:1}.dc small{color:var(--fg3);flex:0 0 auto}
+.dbody{margin:0;border:1px solid var(--line);border-radius:var(--r2);background:var(--bg2);padding:8px 10px;overflow:auto;scrollbar-width:thin;min-height:0;display:flex;flex-direction:column;gap:10px}
+.dsum{font:12.5px var(--body);color:var(--fg2);padding:2px 4px}.dsum .a,.dfile .cnt .a{color:#7fbf98}.dsum .d,.dfile .cnt .d{color:#d86b6b}
+.dfile{border:1px solid var(--line);border-radius:var(--r);background:#141417;flex:0 0 auto}
+.dfile summary{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--panel2);cursor:pointer;font:12.5px var(--mono);color:var(--fg);list-style:none;position:sticky;top:-8px;z-index:1;border-bottom:1px solid var(--line)}
+.dfile summary::-webkit-details-marker{display:none}
+.dfile summary .fi{width:15px;height:15px}.dfile summary .p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dfile .badge{font:10.5px var(--body);padding:1px 6px;border-radius:4px;background:rgba(127,191,152,.15);color:#7fbf98}.dfile .badge.del{background:rgba(216,107,107,.15);color:#d86b6b}
+.dfile .cnt{margin-left:auto;font:11.5px var(--mono);white-space:nowrap}
+.dt{border-collapse:collapse;width:100%;font:12px/1.45 var(--mono);table-layout:fixed;font-variant-ligatures:none}
+.dt td{padding:0 6px;white-space:pre-wrap;overflow-wrap:anywhere;vertical-align:top}
+.dt td:nth-child(1),.dt td:nth-child(2){width:38px;text-align:right;color:var(--fg3);user-select:none;font-size:11px;background:rgba(0,0,0,.12)}
+.dt tr.a td{background:rgba(127,191,152,.10)}.dt tr.a td:nth-child(3){color:#9fd4b3}
+.dt tr.d td{background:rgba(216,107,107,.10)}.dt tr.d td:nth-child(3){color:#e39a9a}
+.dt tr.k td{background:rgba(141,180,240,.08);color:var(--sky);font-size:11.5px}.dt tr.h td{color:var(--fg3)}
+.msg{max-width:84%;padding:10px 14px;border-radius:var(--r2);font-size:13.5px;line-height:1.65;min-width:0;overflow-wrap:anywhere}
+.msg small{display:block;font:11px var(--body);color:var(--fg3);margin-bottom:3px}
+.msg.user{align-self:flex-end;background:#243655;color:#e6eeff;white-space:pre-wrap;border-bottom-right-radius:4px;border:1px solid #2c4169}
+.msg.user small{color:#8ea4cc}
+.msg.assistant{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:3px}
+.msg.live{align-self:flex-start;background:var(--panel2);border:1px dashed var(--line2);max-width:95%;width:95%}
+.msg.live small{color:var(--work)}
+.msg.live pre{margin:0;font:12px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--fg2);max-height:40vh;overflow:auto}
+.msg.tool{align-self:flex-start;font:12px var(--body);color:var(--fg3);padding:2px 10px;border:1px dashed var(--line2);border-radius:4px}
+.md>:first-child{margin-top:0}.md>:last-child{margin-bottom:0}
+.md p{margin:.5em 0}.md h1,.md h2,.md h3{font:600 14px var(--display);color:var(--sky);margin:.9em 0 .3em}
+.md ul,.md ol{padding-left:1.4em;margin:.4em 0}.md li{margin:.15em 0}
+.md code{font:12px var(--mono);background:#141417;border-radius:4px;padding:1px 5px;color:var(--sky)}
+.md pre{background:#141417;border-radius:var(--r);padding:10px;overflow-x:auto;margin:.5em 0}
+.md pre code{background:none;padding:0;color:var(--fg)}
+.md table{border-collapse:collapse;font-size:12.5px;margin:.5em 0;display:block;overflow-x:auto}
+.md th,.md td{border:1px solid var(--line2);padding:4px 8px;text-align:left}.md th{color:var(--hi);font-weight:500}
+.md blockquote{border-left:3px solid var(--line2);margin:.5em 0;padding:2px 10px;color:var(--fg2)}
+.md a{color:var(--sky)}.md hr{border:0;border-top:1px solid var(--line2)}
+.chat .empty{color:var(--fg3);font:13px var(--body)}
+.rail .btn.danger.arm{background:var(--dead);color:var(--hi)}
+.help[hidden]{display:none}
+.help{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:8;padding:16px}
+.help-box{background:var(--panel);border:1px solid var(--line2);border-radius:var(--r2);padding:18px 22px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.help-box h3{margin:0 0 10px;font:600 16px var(--display);color:var(--accent)}
+.help-box dl{display:grid;grid-template-columns:auto 1fr;gap:5px 16px;margin:0;font-size:13px}
+.help-box dt{font:500 12px var(--mono);color:var(--work);white-space:nowrap}.help-box dd{margin:0;color:var(--fg)}
+.keyhint{font:11.5px var(--body);color:var(--fg3)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--accent-ink);font:600 13px var(--body);padding:8px 14px;border-radius:var(--r);opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+.toast.show{opacity:1}
+@media (max-width:1100px){.wrap{height:auto}.rail{height:auto;flex-wrap:wrap;padding:6px 12px;gap:8px 14px}.main{grid-template-columns:184px minmax(0,1fr)}.right{grid-column:1/-1}.center{height:80vh}}
+@media (max-width:760px){.main{grid-template-columns:1fr}.strip{flex-direction:row;flex-wrap:wrap}.strip h4{flex-basis:100%}.chip{width:auto;min-width:150px}.kpis{margin-left:0}}
+@media (prefers-reduced-motion:reduce){.dot.pulse{animation:none}.tab{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="rail">
+    <canvas id="logo" class="logo" width="128" height="128" aria-hidden="true"></canvas>
+    <div class="brand" id="hostwrap"><h1>Claude <span>Control Deck</span></h1><small id="host"></small></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="clock"><b id="clock">--:--:--</b> <span id="tz"></span> · <span id="refreshed">connecting…</span></div>
+    <button class="btn ghost" id="helpbtn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">?</button>
+    <button class="btn danger" id="shutdown" title="Stops only this deck server. Claude sessions and tmux keep running.">Shut down</button>
+  </header>
+  <div class="main">
+    <nav class="side">
+      <input id="q" type="search" placeholder="search all repos…" aria-label="Search sessions across repos">
+      <div class="strip" id="strip" aria-label="Repos"></div>
+      <div class="sidefoot">
+        <button class="btn danger" id="stopmany" title="Stops every running session in this list">Stop shown</button>
+        <button class="btn danger" id="purgemany" title="Removes sessions here that never got a prompt" hidden>Purge empty</button>
+      </div>
+    </nav>
+    <section class="center">
+      <div class="tabbar">
+        <div class="tabs" id="tabs"></div>
+        <button class="btn go tabnew" id="newsess" title="New session in this repo (n)">+</button>
+        <div class="seg" id="seg">
+          <button data-f="all" class="on">All</button><button data-f="live">Live</button><button data-f="work">Working</button><button data-f="tmux">tmux</button><button data-f="dead">Closed</button>
+        </div>
+      </div>
+      <div class="panel" id="panel"><div class="hint">Loading sessions…</div></div>
+    </section>
+    <aside class="right" id="right"><div class="hint">—</div></aside>
+  </div>
+</div>
+<div class="toast" id="toast">COPIED</div>
+<div class="help" id="help" hidden>
+  <div class="help-box">
+    <h3>Keyboard</h3>
+    <dl>
+      <dt>↓ / ↑ · j / k</dt><dd>next / previous repo</dd>
+      <dt>→ / ← · l / h</dt><dd>next / previous session in it</dd>
+      <dt>1 – 5</dt><dd>filter tabs: All · Live · Working · tmux · Closed</dd>
+      <dt>/</dt><dd>search across all repos</dd>
+      <dt>Enter · i</dt><dd>type a message to the selected session</dd>
+      <dt>Esc</dt><dd>leave the message box / close this</dd>
+      <dt>g</dt><dd>jump to it (tmux + terminal)</dd>
+      <dt>s s</dt><dd>stop the selected session (press twice)</dd>
+      <dt>r</dt><dd>revive a closed session</dd>
+      <dt>n</dt><dd>new session in the selected repo</dd>
+      <dt>p</dt><dd>pin / unpin the selected repo</dd>
+      <dt>t</dt><dd>toggle chat / terminal view</dd>
+      <dt>d</dt><dd>toggle chat / changes (git diff) view</dd>
+      <dt>c</dt><dd>copy resume command</dd>
+      <dt>G</dt><dd>scroll chat to bottom</dd>
+      <dt>?</dt><dd>this help</dd>
+    </dl>
+  </div>
+</div>
+
+<script>
+// the deck lives at deck.localhost; old 127.0.0.1 / localhost tabs forward there and carry their saved settings
+(()=>{const H='deck.localhost';try{
+  if(location.hostname==='127.0.0.1'||location.hostname==='localhost'){const o={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith('deck'))o[k]=localStorage.getItem(k)}
+    location.replace(`http://${H}:${location.port}/#import=`+encodeURIComponent(JSON.stringify(o)));return}
+  const m=location.hash.match(/^#import=(.*)$/);if(m){const o=JSON.parse(decodeURIComponent(m[1]));for(const k in o)if(k.startsWith('deck')&&localStorage.getItem(k)===null)localStorage.setItem(k,o[k]);history.replaceState(null,'',location.pathname)}
+}catch{}})();
+let booted=false, D={sessions:[]}, NOW=Date.now(), filter='all', q='', repoSel=null, sel=null, draft={}, sending=false, confirmStop=null;
+const S=()=>D.sessions;
+const isWork=s=>s.alive&&(s.status==='busy'||s.status==='shell');
+const color=s=>s.status==='closed'?'var(--fg3)':!s.alive?'var(--dead)':isWork(s)?'var(--work)':(NOW-s.upd<6*3600e3?'var(--live)':'var(--idle)');
+const label=s=>s.status==='closed'?'closed':!s.alive?'stale':s.status==='busy'?'working':s.status==='shell'?'running shell':(NOW-s.upd<6*3600e3?'live · idle':'idle');
+const bucket=s=>!s.alive?'dead':isWork(s)?'work':'live';
+const short=p=>p.replace(/^\/Users\/[^/]+\//,'~/');
+const ago=t=>{if(!t)return'—';const d=NOW-t;if(d<60e3)return'just now';if(d<3600e3)return Math.round(d/60e3)+'m ago';if(d<86400e3)return Math.round(d/3600e3)+'h ago';return Math.round(d/86400e3)+'d ago'};
+const agoIso=ts=>ts?ago(Date.parse(ts)):'—';
+const dur=t=>{const d=NOW-t,h=Math.floor(d/3600e3),dd=Math.floor(h/24);return dd?`${dd}d ${h%24}h`:`${h}h ${Math.floor(d/60e3)%60}m`};
+const esc=x=>String(x??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const key=s=>s.pid?s.id+':'+s.pid:s.id;
+// groups come from the config file (label + folder); without one, repos are grouped by parent folder
+const parentOf=cwd=>cwd.replace(/\/[^/]+\/?$/,'');
+function groupOf(cwd){const gs=D.groups||[];
+  if(gs.length){const i=gs.findIndex(g=>(cwd+'/').startsWith(g.path));return i<0?{rank:gs.length,label:'Elsewhere'}:{rank:i,label:gs[i].label}}
+  const par=parentOf(cwd);return {rank:par,label:par.replace(D.home||/^$/,'~')}}
+const group=cwd=>groupOf(cwd).rank;
+const repoOrder=(a,b)=>{const x=group(a),y=group(b);return (x<y?-1:x>y?1:0)||a.split('/').pop().localeCompare(b.split('/').pop())};
+const tmuxName=s=>s.tmux?`${s.tmux.session}:${s.tmux.window} ${s.tmux.window_name}`:null;
+
+function kpis(){
+  const live=S().filter(s=>s.alive).length,work=S().filter(isWork).length,dead=S().filter(s=>!s.alive).length,tm=S().filter(s=>s.tmux).length;
+  document.getElementById('kpis').innerHTML=`
+    <span class="kpi live"><b>${live}</b> live</span><span class="kpi work"><b>${work}</b> working</span><span class="kpi tmux"><b>${tm}</b> in tmux</span><span class="kpi"><b>${new Set(S().map(s=>s.cwd)).size}</b> repos</span><span class="kpi dead"><b>${dead}</b> closed</span>`;
+}
+// pinned repos: kept in this browser, shown in their own group above Work, in the order you pinned them
+let pins=[];try{pins=JSON.parse(localStorage.getItem('deckPins')||'[]')}catch{}
+function togglePin(cwd){const i=pins.indexOf(cwd);i<0?pins.push(cwd):pins.splice(i,1);try{localStorage.setItem('deckPins',JSON.stringify(pins))}catch{};toast(i<0?'PINNED':'UNPINNED');strip()}
+const PIN='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.8 1.6l4.6 4.6-1.4.5-2.6 2.6.3 3.2-1.2 1.2-2.9-2.9-3.6 3.6-.6-.6 3.6-3.6-2.9-2.9 1.2-1.2 3.2.3 2.6-2.6z" fill="currentColor"/></svg>';
+function strip(){
+  const m={};S().forEach(s=>{(m[s.cwd]??=[]).push(s)});
+  const pinned=pins.filter(c=>m[c]).map(c=>[c,m[c]]);
+  const rows=Object.entries(m).filter(([c])=>!pins.includes(c)).sort((a,b)=>repoOrder(a[0],b[0]));
+  const chip=([cwd,xs],isPin)=>`
+    <div class="chip ${repoSel===cwd?'on':''} ${isPin?'pinned':''}" role="button" tabindex="0" data-cwd="${esc(cwd)}" title="${esc(short(cwd))} · ${xs.length} session${xs.length>1?'s':''} · last ${ago(Math.max(...xs.map(s=>s.upd)))}">
+      <span class="r">${esc(xs[0].repo)}${xs.some(isWork)?'<span class="wk" title="working"></span>':''}</span>
+      <button class="pin" data-pin="${esc(cwd)}" title="${isPin?'Unpin':'Pin to top'} (p)" aria-label="${isPin?'Unpin':'Pin'} ${esc(xs[0].repo)}">${PIN}</button>
+      <span class="c">${xs.length}</span>
+    </div>`;
+  let g=null;
+  document.getElementById('strip').innerHTML=(pinned.length?'<h4>Pinned</h4>'+pinned.map(r=>chip(r,true)).join(''):'')
+    +rows.map(r=>{const gr=groupOf(r[0]);const h=gr.rank!==g?`<h4>${esc(gr.label)}</h4>`:'';g=gr.rank;return h+chip(r,false)}).join('');
+  document.querySelectorAll('.chip').forEach(c=>{c.onclick=e=>{if(e.target.closest('.pin'))return;repoSel=c.dataset.cwd;save();render()};c.onkeydown=e=>{if(e.key==='Enter'){repoSel=c.dataset.cwd;save();render()}}});
+  document.querySelectorAll('.chip .pin').forEach(b=>b.onclick=e=>{e.stopPropagation();togglePin(b.dataset.pin)});
+}
+let shown=[];
+function grid(){
+  // with a search query the list spans every repo; otherwise it is the selected repo only
+  const xs=S().filter(s=>(filter==='all'||(filter==='tmux'?!!s.tmux:bucket(s)===filter))&&(q?(s.name+' '+s.cwd+' '+(s.last?.text||'')).toLowerCase().includes(q):s.cwd===repoSel))
+    .sort((a,b)=>isWork(b)-isWork(a)||b.upd-a.upd);
+  shown=xs;
+  const sm=document.getElementById('stopmany');const n=xs.filter(s=>s.alive).length;if(sm&&!sm.classList.contains('arm')){sm.textContent=`Stop shown (${n})`;sm.disabled=!n}
+  const pm=document.getElementById('purgemany');const ne=xs.filter(isEmpty).length;if(pm){pm.hidden=!ne;pm.textContent=`Purge empty (${ne})`}
+  document.getElementById('tabs').innerHTML=xs.map(s=>`
+    <div class="tab ${key(s)===sel?'on':''} ${s.status==='closed'?'closed':''}" style="--s:${color(s)}" data-id="${key(s)}" title="${esc(s.last?.text||'no prompt yet')} · ${esc(short(s.cwd))}" role="tab" tabindex="0">
+      <span class="dot ${isWork(s)?'pulse':''}" style="background:${color(s)}"></span><span class="nm">${esc(q?s.repo+' / '+s.name:s.name)}</span>
+      ${s.alive?`<button class="x" data-stop="${key(s)}" title="Stop this session">×</button>`:''}
+    </div>`).join('')||`<div class="hint" style="margin:0 6px">No sessions match.</div>`;
+  const pick=id=>{sel=id;const s=S().find(x=>key(x)===id);if(s&&s.cwd!==repoSel){repoSel=s.cwd;save()}render()};   // a search hit also switches the repo
+  document.querySelectorAll('.tab').forEach(c=>{c.onclick=e=>{if(e.target.dataset.stop)return;pick(c.dataset.id)};c.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick(c.dataset.id)}}});
+  document.querySelectorAll('.tab .x').forEach(x=>x.onclick=e=>{e.stopPropagation();const s=S().find(y=>key(y)===x.dataset.stop);if(s&&confirm(`Stop ${s.name}?`))api('/api/stop',{id:s.id,pid:s.pid}).then(r=>{toast(r.ok?'STOPPED':r.error);refresh()})});
+}
+let view='chat';   // chat | term
+function panel(){
+  const s=S().find(x=>key(x)===sel);if(!s){document.getElementById('panel').innerHTML='<div class="hint">Select a session, or press + for a new one.</div>';right();return}
+  const reach=s.alive&&s.tmux;
+  document.getElementById('panel').innerHTML=`
+    <div class="head">
+      <p class="ttl">${esc(s.name)}</p><span class="pill" style="--s:${color(s)}"><span class="dot ${isWork(s)?'pulse':''}"></span>${label(s)}</span>
+      <span class="sub" id="aititle"></span>
+      <div class="seg" id="viewseg"><button data-v="chat" class="${view==='chat'?'on':''}">Chat</button><button data-v="term" class="${view==='term'?'on':''}" ${s.tmux?'':'disabled'}>Terminal</button><button data-v="diff" class="${view==='diff'?'on':''}">Changes</button></div>
+      ${s.alive?`<button class="btn go" id="focus" ${reach?'':'disabled'}>Jump</button>`:`<button class="btn go" id="revive">Revive</button>`}
+      ${s.alive?`<button class="btn danger" id="stop">${confirmStop===key(s)?'Confirm stop':'Stop'}</button>`:''}
+      ${isEmpty(s)?`<button class="btn danger" id="purge" title="No prompt was ever sent here. Removes the session and its empty transcript.">Purge</button>`:''}
+    </div>
+    <div class="chat" id="chat" ${view==='term'?'hidden':''}><div class="empty">loading…</div></div>
+    <pre class="term" id="term" ${view==='term'?'':'hidden'}>loading…</pre>
+    <div class="diffv" id="diffv" ${view==='diff'?'':'hidden'}></div>
+    <div class="composer">
+      <div class="acwrap">
+        <textarea id="msg" placeholder="${reach?'Message this session. Enter sends, Shift+Enter for a new line. / for commands, @ for files, paste images.':'Not reachable: not running inside tmux. Stop it, then Revive.'}" ${reach?'':'disabled'}>${esc(draft[key(s)]||'')}</textarea>
+        <div class="ac" id="ac" hidden></div>
+      </div>
+      <div class="attach" id="attach"></div>
+      <div class="row">
+        <button class="btn" id="send" ${reach?'':'disabled'}>Send ↵</button>
+        <span class="st" id="st"></span>
+      </div>
+    </div>`;
+  document.querySelectorAll('#viewseg button').forEach(b=>b.onclick=()=>setView(s,b.dataset.v));
+  const ta=document.getElementById('msg');
+  ta.oninput=()=>{draft[key(s)]=ta.value;acUpdate(s)};
+  ta.onkeydown=e=>{
+    if(acOpen()){if(e.key==='ArrowDown'){e.preventDefault();acMove(1);return}if(e.key==='ArrowUp'){e.preventDefault();acMove(-1);return}
+      if(e.key==='Tab'||e.key==='Enter'){e.preventDefault();acAccept(s);return}if(e.key==='Escape'){e.preventDefault();e.stopPropagation();acClose();return}}
+    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send(s)}};
+  ta.onblur=()=>setTimeout(acClose,150);
+  ta.onpaste=e=>{const fs=[...(e.clipboardData?.items||[])].filter(i=>i.type.startsWith('image/'));if(!fs.length)return;e.preventDefault();fs.forEach(i=>addImage(s,i.getAsFile()))};
+  ta.ondragover=e=>{if([...e.dataTransfer.items].some(i=>i.type.startsWith('image/')))e.preventDefault()};
+  ta.ondrop=e=>{const fs=[...e.dataTransfer.files].filter(f=>f.type.startsWith('image/'));if(!fs.length)return;e.preventDefault();fs.forEach(f=>addImage(s,f))};
+  paintAttach(s);
+  document.getElementById('send').onclick=()=>send(s);
+  loadView(s);
+  right();
+  const fb=document.getElementById('focus');if(fb)fb.onclick=()=>api('/api/focus',{id:s.id,pid:s.pid}).then(r=>toast(r.ok?'SWITCHED':r.error)).catch(e=>toast(String(e)));
+  const rb=document.getElementById('revive');if(rb)rb.onclick=()=>{rb.disabled=true;rb.textContent='Reviving…';api('/api/revive',{id:s.id,pid:s.pid}).then(r=>{toast(r.ok?'RESUMING IN '+r.window:r.error);setTimeout(refresh,3000)}).catch(e=>toast(String(e)))};
+  const pb=document.getElementById('purge');if(pb)pb.onclick=()=>purge([s]);
+  const sb=document.getElementById('stop');if(sb)sb.onclick=()=>{if(confirmStop!==key(s)){confirmStop=key(s);panelKey='';render();setTimeout(()=>{if(confirmStop===key(s)){confirmStop=null;panelKey='';render()}},4000);return}
+    confirmStop=null;sb.disabled=true;sb.textContent='Stopping…';api('/api/stop',{id:s.id,pid:s.pid}).then(r=>{toast(r.ok?(r.stopped?'STOPPED':'STILL RUNNING'):r.error);refresh()}).catch(e=>toast(String(e)))};
+}
+function setView(s,v){view=v;document.querySelectorAll('#viewseg button').forEach(x=>x.classList.toggle('on',x.dataset.v===v));
+  document.getElementById('chat').hidden=v!=='chat';document.getElementById('term').hidden=v!=='term';document.getElementById('diffv').hidden=v!=='diff';loadView(s)}
+function loadView(s){if(view==='term')loadTerm(s);else if(view==='diff')loadDiff(s);else loadChat(s)}
+// ---- Changes view: git status list, per-file diff, ask claude to commit ----
+async function loadDiff(s){const box=document.getElementById('diffv');if(!box)return;
+  if(box.dataset.cwd!==s.cwd){box.dataset.cwd=s.cwd;box.dataset.sig='';box.innerHTML='<div class="dbody" id="dbody"><span class="hint">loading…</span></div>'}
+  let d;try{d=await (await fetch('/api/gitlog?cwd='+encodeURIComponent(s.cwd),{cache:'no-store'})).json()}catch{return}
+  if(d.error){box.innerHTML='<div class="hint">not a git repo</div>';return}
+  const sig=d.files.map(x=>x.status+x.path).join('|')+'#'+(d.log[0]?.h||'');if(box.dataset.sig!==sig){box.dataset.sig=sig;await showAllDiff(s)}}
+const cssId=p=>p.replace(/[^a-z0-9]/gi,'_');
+async function showAllDiff(s){const b=document.getElementById('dbody');if(!b)return;
+  try{const d=await (await fetch(`/api/gitdiff?cwd=${encodeURIComponent(s.cwd)}&all=1`,{cache:'no-store'})).json();
+    const files=[];let cur=null;
+    for(const l of (d.diff||'').split('\n')){
+      if(l.startsWith('diff --git ')){const m=l.match(/ b\/(.+)$/);cur={path:m?m[1].replace(/\/$/,''):l,lines:[],add:0,del:0,meta:[]};files.push(cur);continue}
+      if(cur&&l.startsWith('new folder')){cur.folder=+l.split(' ')[2]||0;continue}
+      if(!cur)continue;
+      if(l.startsWith('+++')||l.startsWith('---')||l.startsWith('index ')||l.startsWith('new file')||l.startsWith('deleted file')||l.startsWith('similarity')||l.startsWith('rename')||l.startsWith('old mode')||l.startsWith('new mode')){cur.meta.push(l);continue}
+      if(l.startsWith('+'))cur.add++;else if(l.startsWith('-'))cur.del++;cur.lines.push(l)}
+    const tot=files.reduce((a,f)=>({add:a.add+f.add,del:a.del+f.del}),{add:0,del:0});
+    b.innerHTML=files.length?`<div class="dsum">${files.length} file${files.length>1?'s':''} changed · <span class="a">+${tot.add}</span> <span class="d">−${tot.del}</span></div>`+files.map(f=>{
+      const isNew=f.meta.some(m=>m.startsWith('new file')),isDel=f.meta.some(m=>m.startsWith('deleted file'));let ol=0,nl=0;
+      if(f.folder!=null)return `<details class="dfile" id="dfile-${cssId(f.path)}"><summary>${folderIcon(false,f.path.split('/').pop())}<span class="p">${esc(f.path)}/</span><span class="badge new">new folder</span><span class="cnt" style="color:var(--fg3)">${f.folder} files</span></summary></details>`;
+      return `<details class="dfile" id="dfile-${cssId(f.path)}" open><summary>${fileIcon(f.path.split('/').pop())}<span class="p">${esc(f.path)}</span>${isNew?'<span class="badge new">new</span>':isDel?'<span class="badge del">deleted</span>':''}<span class="cnt"><span class="a">+${f.add}</span> <span class="d">−${f.del}</span></span></summary>
+        <table class="dt">${f.lines.map(l=>{if(l.startsWith('@@')){const m=l.match(/-(\d+)(?:,\d+)? \+(\d+)/);if(m){ol=+m[1];nl=+m[2]}return `<tr class="k"><td></td><td></td><td>${esc(l)}</td></tr>`}
+          const t=l[0],body=l.slice(1);if(t==='+')return `<tr class="a"><td></td><td>${nl++}</td><td>+${esc(body)}</td></tr>`;if(t==='-')return `<tr class="d"><td>${ol++}</td><td></td><td>-${esc(body)}</td></tr>`;if(t==='\\')return `<tr class="h"><td></td><td></td><td>${esc(l)}</td></tr>`;return `<tr><td>${ol++}</td><td>${nl++}</td><td> ${esc(body)}</td></tr>`}).join('')}</table></details>`}).join('')
+      :'<div class="hint" style="padding:10px">no changes against HEAD</div>'}catch{b.textContent='could not load diff'}}
+async function loadTerm(s){const t=document.getElementById('term');if(!t||!s.tmux)return;
+  try{const d=await (await fetch('/api/live?pid='+s.pid+'&full=1',{cache:'no-store'})).json();if(document.getElementById('term')!==t)return;
+    const atBottom=t.scrollHeight-t.scrollTop-t.clientHeight<40||t.textContent==='loading…';t.textContent=d.live||'(empty)';if(atBottom)t.scrollTop=t.scrollHeight}catch{}}
+// ---- right column: git + worktrees, then the session's stats and details ----
+let gitCache={},rightKey='';
+let secs={};try{secs=JSON.parse(localStorage.getItem('deckSecs')||'{}')}catch{}
+const secOpen=k=>!!secs[k];   // collapsed unless opened before
+async function right(){
+  const s=S().find(x=>key(x)===sel);const box=document.getElementById('right');if(!s){box.innerHTML='<div class="hint">—</div>';return}
+  const mx=Math.max(1,...s.buckets),bars=s.buckets.map((v,i)=>`<i style="height:${Math.max(2,Math.round(v/mx*26))}px" class="${v&&i>=22?'hot':''}" title="${v} msgs"></i>`).join('');
+  const resume=`cd ${s.cwd} && claude --resume ${s.id}`;
+  const k=[s.id,s.pid,s.alive,s.status].join('|');
+  if(k!==rightKey){rightKey=k;box.innerHTML=`
+    <div class="explorer">
+      <div class="xtabs"><button data-x="files" class="${xtab==='files'?'on':''}">Explorer</button><button data-x="changes" class="${xtab==='changes'?'on':''}">Changes <span class="n" id="chgn"></span></button><button class="btn ghost" id="treerefresh" title="Refresh">↻</button></div>
+      <div class="gitline" id="gitline">loading…</div>
+      <div class="tree" id="tree" ${xtab==='files'?'':'hidden'}></div>
+      <div class="cwrap" id="cwrap" ${xtab==='changes'?'':'hidden'}>
+        <div class="cact"><button class="btn ghost" id="dcommit" ${s.alive&&s.tmux?'':'disabled'} title="Sends a commit request to this session">Ask Claude to commit</button><button class="btn ghost" id="dreview" ${s.alive&&s.tmux?'':'disabled'} title="Sends a review request to this session">Ask for review</button></div>
+        <div class="tree" id="ctree"><div class="hint" style="padding:6px 10px">loading…</div></div>
+        <div class="ch">Recent commits</div><div class="dlog" id="dlog"></div>
+      </div>
+    </div>
+    <details class="sec" id="sec-stats" ${secOpen('stats')?'open':''}><summary>Session stats</summary><div id="stats" class="stats"><div class="hint">loading…</div></div><h2 style="margin-top:12px">Activity · 24h</h2><div class="spark">${bars}</div></details>
+    <details class="sec" id="sec-details" ${secOpen('details')?'open':''}><summary>Details</summary><dl class="kv">
+      <dt>state</dt><dd style="color:${color(s)}">${label(s)}${s.last_tool&&isWork(s)?' · '+esc(s.last_tool.name):''}</dd>
+      <dt>folder</dt><dd>${esc(short(s.cwd))}</dd>
+      <dt>tmux</dt><dd>${s.tmux?esc(tmuxName(s))+' <span style="color:var(--fg3)">'+esc(s.tmux.pane)+'</span>':'<span style="color:var(--fg3)">not in tmux</span>'}</dd>
+      <dt>pid · tty</dt><dd>${s.pid}${s.alive?'':' <span style="color:var(--dead)">(not running)</span>'} · ${esc(s.tty||'—')}</dd>
+      <dt>started</dt><dd>${new Date(s.started).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})} · up ${dur(s.started)}</dd>
+      <dt>version</dt><dd>${esc(s.version||'—')}</dd>
+      <dt>transcript</dt><dd>${esc(short(s.transcript||'—'))}</dd>
+    </dl><h2 style="margin-top:12px">Resume elsewhere</h2><div class="cmd"><code>${esc(resume)}</code></div><div class="actions" style="margin-top:8px"><button class="btn" data-copy="${esc(resume)}">Copy resume</button><button class="btn ghost" data-copy="${esc(s.id)}">Copy id</button></div></details>`;
+    document.querySelectorAll('.sec').forEach(d=>d.ontoggle=()=>{secs[d.id.slice(4)]=d.open;try{localStorage.setItem('deckSecs',JSON.stringify(secs))}catch{}});
+    document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(b.dataset.copy);toast('COPIED')}catch{toast('SELECT & COPY MANUALLY')}});
+    document.getElementById('treerefresh').onclick=()=>{treeCache={};loadTree(s,true);loadChanges(s)};
+    document.querySelectorAll('.xtabs [data-x]').forEach(b=>b.onclick=()=>{xtab=b.dataset.x;try{localStorage.setItem('deckX',xtab)}catch{}
+      document.querySelectorAll('.xtabs [data-x]').forEach(x=>x.classList.toggle('on',x===b));document.getElementById('tree').hidden=xtab!=='files';document.getElementById('cwrap').hidden=xtab!=='changes';if(xtab==='changes')loadChanges(s)});
+    const ask=t=>{const ta=document.getElementById('msg');if(ta&&!ta.disabled){ta.value=t;draft[key(s)]=ta.value;send(s);setView(s,'chat')}};
+    document.getElementById('dcommit').onclick=()=>ask('Review the uncommitted changes in this repo and commit them with a clear message. Do not push.');
+    document.getElementById('dreview').onclick=()=>ask('Review the uncommitted changes in this repo for bugs and anything I should fix before committing. Keep it short.');
+    loadStats(s);loadTree(s,true);}
+  loadGit(s);
+  if(xtab==='changes')loadChanges(s);
+}
+let xtab='files';try{xtab=localStorage.getItem('deckX')||'files'}catch{}
+// ---- Changes tab: tree of only the changed files; click a file to see its diff ----
+let chgClosed={},chgSig={};
+async function loadChanges(s){const t=document.getElementById('ctree');if(!t)return;
+  let d;try{d=await (await fetch('/api/gitlog?cwd='+encodeURIComponent(s.cwd),{cache:'no-store'})).json()}catch{return}
+  if(document.getElementById('ctree')!==t)return;
+  if(d.error){t.innerHTML='<div class="hint" style="padding:6px 10px">not a git repo</div>';return}
+  const n=document.getElementById('chgn');if(n)n.textContent=d.files.length||'';
+  const sig=JSON.stringify(d.files)+(d.log[0]?.h||'')+JSON.stringify([...(chgClosed[s.cwd]||[])]);if(chgSig[s.cwd]===sig&&t.dataset.cwd===s.cwd)return;chgSig[s.cwd]=sig;t.dataset.cwd=s.cwd;
+  // build a nested tree from the changed paths
+  const root={dirs:{},files:[]};
+  for(const f of d.files){const parts=f.path.replace(/\/$/,'').split('/');let node=root;
+    for(let i=0;i<parts.length-1;i++){node=node.dirs[parts[i]]??={dirs:{},files:[],path:parts.slice(0,i+1).join('/')}}
+    node.files.push({name:parts[parts.length-1],path:f.path,status:f.status,dir:f.dir})}
+  const closed=(chgClosed[s.cwd]??=new Set());const chev=o=>o?'<svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>':'<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  const count=node=>node.files.length+Object.values(node.dirs).reduce((a,x)=>a+count(x),0);
+  const draw=(node,depth)=>{let h='';
+    for(const [name,sub] of Object.entries(node.dirs).sort((a,b)=>a[0].localeCompare(b[0]))){
+      // collapse single-child folder chains like VS Code: a/b/c
+      let label=name,cur=sub;while(!cur.files.length&&Object.keys(cur.dirs).length===1){const [nn,nx]=Object.entries(cur.dirs)[0];label+='/'+nn;cur=nx}
+      const open=!closed.has(cur.path);
+      h+=`<div class="te dir" data-dir="${esc(cur.path)}" style="--d:${depth}"><span class="tw">${chev(open)}</span>${folderIcon(open,label.split('/').pop())}<span class="tn">${esc(label)}</span><span class="cc">${count(cur)}</span></div>`;
+      if(open)h+=draw(cur,depth+1)}
+    for(const f of node.files.sort((a,b)=>a.name.localeCompare(b.name)))
+      h+=`<div class="te file st-${f.status}" data-file="${esc(f.path)}" style="--d:${depth}" title="${esc(f.path)}"><span class="tw"></span>${f.dir?folderIcon(false,f.name):fileIcon(f.name)}<span class="tn">${esc(f.name)}${f.dir?'/':''}</span><span class="ts">${f.status}</span></div>`;
+    return h};
+  t.innerHTML=d.files.length?draw(root,0):'<div class="hint" style="padding:6px 10px">working tree clean</div>';
+  t.querySelectorAll('[data-dir]').forEach(el=>el.onclick=()=>{const p=el.dataset.dir;closed.has(p)?closed.delete(p):closed.add(p);chgSig[s.cwd]='';loadChanges(s)});
+  t.querySelectorAll('[data-file]').forEach(el=>el.onclick=()=>{t.querySelectorAll('.te').forEach(x=>x.classList.toggle('sel',x===el));const p=el.dataset.file;
+    const go=()=>document.getElementById('dfile-'+cssId(p))?.scrollIntoView({block:'start'});if(view!=='diff'){setView(s,'diff');setTimeout(go,700)}else go()});
+  const lg=document.getElementById('dlog');if(lg)lg.innerHTML=d.log.map(c=>`<div class="dc"><code>${esc(c.h)}</code><span class="tn" title="${esc(c.s)}">${esc(c.s)}</span><small>${esc(c.t)}</small></div>`).join('')}
+// ---- explorer icons: folder glyphs + per-type file glyphs, drawn inline (no assets) ----
+const ICO={py:['#3b82f6','py'],js:['#eab308','js'],mjs:['#eab308','js'],cjs:['#eab308','js'],ts:['#3178c6','ts'],tsx:['#06b6d4','tsx'],jsx:['#06b6d4','jsx'],
+  html:['#f97316','<>'],htm:['#f97316','<>'],css:['#60a5fa','#'],scss:['#ec4899','#'],json:['#facc15','{}'],jsonl:['#facc15','{}'],md:['#60a5fa','M↓'],txt:['#9ca3af','≡'],
+  sh:['#22c55e','$_'],zsh:['#22c55e','$_'],bash:['#22c55e','$_'],yml:['#ef4444','y'],yaml:['#ef4444','y'],toml:['#9ca3af','t'],ini:['#9ca3af','i'],env:['#eab308','e'],
+  png:['#a78bfa','▣'],jpg:['#a78bfa','▣'],jpeg:['#a78bfa','▣'],gif:['#a78bfa','▣'],svg:['#f59e0b','◇'],webp:['#a78bfa','▣'],pdf:['#ef4444','pdf'],
+  sql:['#f472b6','db'],csv:['#22c55e','▦'],xlsx:['#22c55e','▦'],lock:['#9ca3af','🔒'],go:['#06b6d4','go'],rs:['#f97316','rs'],java:['#ef4444','J'],rb:['#ef4444','rb'],
+  php:['#818cf8','php'],swift:['#f97316','sw'],kt:['#a78bfa','kt'],c:['#60a5fa','C'],h:['#60a5fa','h'],cpp:['#60a5fa','C+'],dockerfile:['#0ea5e9','🐳'],vue:['#22c55e','V'],svelte:['#f97316','S']};
+const SPECIAL={'package.json':['#22c55e','npm'],'dockerfile':['#0ea5e9','🐳'],'makefile':['#9ca3af','mk'],'.gitignore':['#f97316','git'],'.env':['#eab308','env'],'readme.md':['#60a5fa','i'],'claude.md':['#f97316','cl'],'license':['#eab308','§']};
+function fileIcon(name){const ln=name.toLowerCase();const sp=SPECIAL[ln];const ext=ln.includes('.')?ln.split('.').pop():ln;const [c,t]=sp||ICO[ext]||['#6f6f7a',''];
+  return `<svg class="fi" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10a.5.5 0 0 1-.5.5h-8.5a.5.5 0 0 1-.5-.5v-12.5a.5.5 0 0 1 .5-.5z" fill="${c}22" stroke="${c}" stroke-width="1"/><path d="M9.5 1.5v3h3" fill="none" stroke="${c}" stroke-width="1"/><text x="8" y="12.2" text-anchor="middle" font-size="${t.length>2?4.6:5.6}" font-family="JetBrains Mono,monospace" font-weight="700" fill="${c}">${esc(t)}</text></svg>`}
+function folderIcon(open,name){const ln=name.toLowerCase();const c=ln==='.claude'?'#f97316':ln==='.git'?'#f05032':ln==='src'||ln==='lib'?'#60a5fa':ln==='tests'||ln==='test'?'#22c55e':ln==='scripts'||ln==='bin'?'#a78bfa':ln==='docs'||ln==='daily'||ln==='notes'?'#38bdf8':'#d6a85a';
+  return open?`<svg class="fi" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5a1 1 0 0 1 1-1h3.3l1.5 1.5h6.2a1 1 0 0 1 1 1v1.5h-11.5l-1.5 6z" fill="${c}55" stroke="${c}" stroke-width="1"/><path d="M3 6.5h12l-1.6 6.5a1 1 0 0 1-1 .8H2.2z" fill="${c}" stroke="${c}" stroke-width="1"/></svg>`
+             :`<svg class="fi" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5a1 1 0 0 1 1-1h3.3l1.5 1.5h6.2a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" fill="${c}" stroke="${c}" stroke-width="1"/><path d="M1.5 6h13" stroke="#0d0d0f" stroke-opacity=".35" stroke-width="1"/></svg>`}
+// ---- explorer: lazy folder tree of the session's folder; click a file to reference it in the message ----
+let treeCache={},treeOpen={},treeSel=null;
+async function ls(cwd,path){const k=cwd+'|'+path;if(treeCache[k])return treeCache[k];const d=await (await fetch(`/api/ls?cwd=${encodeURIComponent(cwd)}&path=${encodeURIComponent(path)}`,{cache:'no-store'})).json();return treeCache[k]=d.entries||[]}
+async function loadTree(s,force){const t=document.getElementById('tree');if(!t)return;const open=(treeOpen[s.cwd]??=new Set());
+  const row=async(path,depth)=>{const es=await ls(s.cwd,path);let h='';
+    for(const e of es){const isOpen=e.dir&&open.has(e.path);
+      h+=`<div class="te ${e.dir?'dir':'file'} ${treeSel===e.path?'sel':''}" data-path="${esc(e.path)}" data-dir="${e.dir?1:0}" style="--d:${depth}" title="${esc(e.path)}"><span class="tw">${e.dir?(isOpen?'<svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>':'<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>'):''}</span>${e.dir?folderIcon(isOpen,e.name):fileIcon(e.name)}<span class="tn">${esc(e.name)}</span></div>`;
+      if(isOpen)h+=await row(e.path,depth+1)}
+    return h};
+  if(force)Object.keys(treeCache).forEach(k=>{if(k.startsWith(s.cwd+'|'))delete treeCache[k]});
+  const html=await row('',0);const t2=document.getElementById('tree');if(!t2)return;t2.innerHTML=html||'<div class="hint">empty folder</div>';
+  t2.querySelectorAll('.te').forEach(el=>el.onclick=()=>{const p=el.dataset.path;treeSel=p;
+    if(el.dataset.dir==='1'){open.has(p)?open.delete(p):open.add(p);loadTree(s)}
+    else{const ta=document.getElementById('msg');if(ta&&!ta.disabled){const v=ta.value;ta.value=(v&&!v.endsWith(' ')?v+' ':v)+'@'+p+' ';draft[key(s)]=ta.value;ta.focus();toast('ADDED @'+p.split('/').pop())}}})}
+async function loadGit(s){
+  const paint=g=>{const gl=document.getElementById('gitline');if(!gl)return;
+    if(!g.git){gl.textContent='not a git repo';return}
+    gl.innerHTML=`<b>${esc(g.branch)}</b>${g.dirty?` · <span style="color:var(--work)">${g.dirty} changed</span>`:' · clean'}${g.ahead?` · ↑${g.ahead}`:''}${g.behind?` · ↓${g.behind}`:''}<br><span style="color:var(--fg3)">${esc(g.last)}</span>`};
+  if(gitCache[s.cwd])paint(gitCache[s.cwd]);
+  try{const g=await (await fetch('/api/git?cwd='+encodeURIComponent(s.cwd),{cache:'no-store'})).json();const was=gitCache[s.cwd];gitCache[s.cwd]=g;if(sel&&S().find(x=>key(x)===sel)?.cwd===s.cwd){paint(g);const n=document.getElementById('chgn');if(n)n.textContent=g.dirty||'';if(!was||was.dirty!==g.dirty||was.last!==g.last){if(xtab==='changes')loadChanges(s)}}}catch{}
+}
+// compare a sent message with its transcript copy: ignore [Image #n], [n images], pasted image paths, whitespace
+const normMsg=x=>String(x||'').replace(/\[\d+ images?\]/g,'').replace(/\[Image #\d+\]/g,'').replace(/\S+\.(png|jpe?g|gif|webp)\b/gi,'').replace(/\s+/g,' ').trim();
+let chatFor=null, chatCache={}, chatVer={}, pending={}, statsFor=null, statsCache={};
+const fmt=n=>n==null?'—':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(n>=1e5?0:1)+'k':String(n);
+const mins=ms=>ms==null?'—':ms>=3600e3?(ms/3600e3).toFixed(1)+'h':Math.round(ms/60e3)+'m';
+const ctxMax=st=>st.max_context>200000?1000000:200000;   // 1M-context models vs 200k
+async function loadStats(s){
+  const box=document.getElementById('stats');if(!box)return;statsFor=s.id;
+  const paint=st=>{const b=document.getElementById('stats');if(!b)return;if(!st){b.innerHTML='<div class="hint">no transcript yet</div>';return}
+    const CTX_MAX=ctxMax(st),pct=st.context?Math.min(100,st.context/CTX_MAX*100):0,cls=pct>85?'bad':pct>60?'wn':'';
+    const at=document.getElementById('aititle');if(at)at.textContent=st.title||'';const model=Object.keys(st.models).sort((a,b)=>st.models[b]-st.models[a])[0]||'—';
+    b.innerHTML=`
+      <div class="ctx"><small><span>CONTEXT NOW · ${model.replace('claude-','')}</span><span>${fmt(st.context)} / ${fmt(CTX_MAX)} · peak ${fmt(st.max_context)}</span></small><div class="bar"><i class="${cls}" style="width:${pct}%"></i></div></div>
+      <div class="tile"><b class="${st.cost?.usd!=null?'wn':''}">${st.cost?.usd!=null?'$'+st.cost.usd.toFixed(2):'—'}</b><i>cost · checkpoint</i></div>
+      <div class="tile"><b class="ac">${fmt(st.output)}</b><i>output tokens</i></div>
+      <div class="tile"><b>${fmt(st.thinking)}</b><i>thinking</i></div>
+      <div class="tile"><b>${fmt(st.input+st.cache_write)}</b><i>input · fresh</i></div>
+      <div class="tile"><b>${fmt(st.cache_read)}</b><i>input · cached</i></div>
+      <div class="tile"><b>${st.prompts}</b><i>your prompts</i></div>
+      <div class="tile"><b>${st.replies}</b><i>claude replies</i></div>
+      <div class="tile"><b>${st.tool_calls}</b><i>tool calls</i></div>
+      <div class="tile"><b class="ok">+${st.cost?.lines_added??'—'} <span style="color:var(--dead)">−${st.cost?.lines_removed??'—'}</span></b><i>lines changed</i></div>
+      <div class="tile"><b>${mins(st.cost?.api_ms)}</b><i>api time</i></div>
+      <div class="tile"><b>${mins(st.cost?.tool_ms)}</b><i>tool time</i></div>
+      <div class="tile"><b>${fmt(st.size_bytes)}B</b><i>transcript</i></div>
+      <div class="tools-used">${Object.entries(st.tools).map(([k,v])=>`<span><b>${v}</b> ${esc(k.startsWith('mcp__')?k.split('__').pop():k)}</span>`).join('')}</div>`};
+  if(statsCache[s.id])paint(statsCache[s.id]);
+  try{const r=await fetch('/api/stats?id='+encodeURIComponent(s.id),{cache:'no-store'});const d=await r.json();statsCache[s.id]=d.stats;if(statsFor===s.id)paint(d.stats)}
+  catch{if(statsFor===s.id)box.innerHTML='<div class="hint">could not load stats</div>'}
+}
+function renderMd(t){try{return DOMPurify.sanitize(marked.parse(t,{breaks:true,gfm:true}))}catch{return esc(t)}}
+// the part of the pane that is not in the chat yet: after your last message, skipping reply blocks the transcript already has
+function liveTail(pane,turns){
+  const L=pane.split('\n'),key=t=>normMsg(String(t).replace(/[*`#_>]/g,'')).slice(0,36);
+  let u=-1;for(let i=turns.length-1;i>=0;i--)if(turns[i].role==='user'&&!turns[i].local){u=i;break}
+  let start=0;
+  if(u>=0){const k=key(turns[u].text);if(k){for(let i=L.length-1;i>=0;i--)if(/^\s*[❯>]/.test(L[i])&&normMsg(L[i].replace(/[*`#_>]/g,'')).includes(k)){let j=i+1;while(j<L.length&&!/^\S/.test(L[j]))j++;start=j;break}}}
+  for(const t of turns.slice(u+1)){if(t.role!=='assistant')continue;const k=key(t.text.split('\n')[0]).slice(0,30);if(!k)continue;
+    for(let i=start;i<L.length;i++)if(/^\s*[●⏺]/.test(L[i])&&normMsg(L[i].replace(/[*`#_]/g,'')).includes(k)){let j=i+1;while(j<L.length&&!/^\S/.test(L[j]))j++;start=j;break}}
+  return L.slice(start).join('\n').replace(/^\s*\n/,'').replace(/^\s+(?=\S)/,'')}
+async function loadChat(s){
+  const box=document.getElementById('chat');if(!box)return;
+  const paint=turns=>{const b=document.getElementById('chat');if(!b)return;
+    // only repaint when the content changed; keep the reader's place unless they were at the bottom
+    const html0=JSON.stringify(turns.map(t=>[t.role,t.text,t.local?1:0]));
+    if(b.dataset.sig===html0&&b.dataset.sid===s.id)return;
+    const atBottom=b.dataset.sid!==s.id||b.scrollHeight-b.scrollTop-b.clientHeight<40;
+    const top=b.scrollTop;b.dataset.sig=html0;b.dataset.sid=s.id;
+    b.innerHTML=turns.length?turns.map(t=>t.role==='tool'?`<div class="msg tool">▶ ${esc(t.text.replace(/mcp__[\w-]+?__(?:[\w-]+?__)*?([a-z_]+)(?=,|$)/g,'$1'))}</div>`:t.role==='live'?`<div class="msg live"><small>claude · working, live from the terminal</small><pre>${esc(t.text)}</pre></div>`:
+      `<div class="msg ${t.role}"><small>${t.role==='user'?'you':'claude'} · ${t.local?'sent':agoIso(t.ts)}</small>${t.role==='user'?esc(t.text):'<div class="md">'+renderMd(t.text)+'</div>'}</div>`).join('')
+      :'<div class="empty">no messages in this transcript</div>';
+    b.scrollTop=atBottom?b.scrollHeight:top};
+  if(chatCache[s.id])paint(chatCache[s.id]);
+  chatFor=s.id;
+  try{const r=await fetch('/api/history?id='+encodeURIComponent(s.id)+(chatVer[s.id]?'&v='+encodeURIComponent(chatVer[s.id]):''),{cache:'no-store'});const d=await r.json();
+    if(d.same&&!isWork(s)&&!(pending[s.id]||[]).length){   // nothing new and nothing in flight: just drop a leftover live bubble
+      const c=chatCache[s.id]||[];if(c.some(t=>t.role==='live')){chatCache[s.id]=c.filter(t=>t.role!=='live');if(chatFor===s.id)paint(chatCache[s.id])}
+      return}
+    if(d.v)chatVer[s.id]=d.v;
+    let turns=d.same?(chatCache[s.id]||[]).filter(t=>t.role!=='live'&&!t.local):(d.turns||[]);
+    const sentTs=t=>Date.parse(t.ts)||0;
+    const pend=(pending[s.id]||[]).filter(p=>{const k=normMsg(p.text);
+      // drop the local copy once the transcript has it, or already has a later user turn
+      return !turns.some(t=>t.role==='user'&&(normMsg(t.text)===k||(k&&normMsg(t.text).endsWith(k))))&&!turns.some(t=>t.role==='user'&&sentTs(t)>sentTs(p)+5000)});
+    pending[s.id]=pend; turns=turns.concat(pend);
+    if(isWork(s)&&s.tmux){try{const lv=await (await fetch('/api/live?pid='+s.pid+'&id='+encodeURIComponent(s.id),{cache:'no-store'})).json();
+      if(lv.live){const txt=liveTail(lv.live,turns);if(txt.trim())turns=turns.concat({role:'live',text:txt})}}catch{}}
+    chatCache[s.id]=turns;if(chatFor===s.id)paint(turns)}
+  catch(e){if(chatFor===s.id)box.innerHTML='<div class="empty">could not load history</div>'}
+}
+async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Deck':'1'},body:JSON.stringify(body)});return r.json()}
+// ---- composer: image attachments ----
+const attach={};   // key(s) -> [dataURL]
+function addImage(s,file){if(!file)return;const rd=new FileReader();rd.onload=()=>{(attach[key(s)]??=[]).push(rd.result);paintAttach(s)};rd.readAsDataURL(file)}
+function paintAttach(s){const b=document.getElementById('attach');if(!b)return;const xs=attach[key(s)]||[];
+  b.innerHTML=xs.map((d,i)=>`<figure><img src="${d}" alt="attachment ${i+1}"><button title="remove" data-i="${i}">×</button></figure>`).join('');
+  b.querySelectorAll('button').forEach(x=>x.onclick=()=>{xs.splice(+x.dataset.i,1);paintAttach(s)})}
+// ---- composer: `/` and `@` completion ----
+let acItems=[],acIdx=0,acTok=null,acTimer=null;
+const acOpen=()=>{const a=document.getElementById('ac');return a&&!a.hidden&&acItems.length>0};
+function acClose(){const a=document.getElementById('ac');if(a){a.hidden=true}acItems=[];acTok=null}
+function acToken(ta){const v=ta.value,c=ta.selectionStart;const st=Math.max(v.lastIndexOf(' ',c-1),v.lastIndexOf('\n',c-1))+1;const tok=v.slice(st,c);
+  if(tok.startsWith('@'))return{kind:'file',q:tok.slice(1),start:st};if(tok.startsWith('/')&&st===0)return{kind:'cmd',q:tok.slice(1),start:st};return null}
+function acUpdate(s){const ta=document.getElementById('msg');const t=acToken(ta);if(!t){acClose();return}acTok=t;clearTimeout(acTimer);
+  acTimer=setTimeout(async()=>{try{const r=await fetch(`/api/complete?kind=${t.kind}&q=${encodeURIComponent(t.q)}&cwd=${encodeURIComponent(s.cwd)}`);const d=await r.json();
+    if(acTok!==t)return;acItems=d.items||[];acIdx=0;acPaint(s)}catch{acClose()}},120)}
+let acS=null;
+function acPaint(s){acS=s||acS;s=acS;const a=document.getElementById('ac');if(!a)return;if(!acItems.length){a.hidden=true;return}
+  a.innerHTML=acItems.map((it,i)=>`<div class="${i===acIdx?'on':''}" data-i="${i}">${esc(it.name)}${it.hint?`<small>${esc(it.hint)}</small>`:''}</div>`).join('');a.hidden=false;
+  a.querySelectorAll('div').forEach(d=>d.onmousedown=e=>{e.preventDefault();acIdx=+d.dataset.i;acAccept(s)});
+  a.querySelector('.on')?.scrollIntoView({block:'nearest'})}
+function acMove(d){acIdx=(acIdx+d+acItems.length)%acItems.length;acPaint()}
+function acAccept(s){const ta=document.getElementById('msg'),it=acItems[acIdx];if(!it||!acTok){acClose();return}
+  const v=ta.value,c=ta.selectionStart,ins=it.name+' ';ta.value=v.slice(0,acTok.start)+ins+v.slice(c);const pos=acTok.start+ins.length;ta.setSelectionRange(pos,pos);draft[key(s)]=ta.value;acClose();ta.focus()}
+async function send(s){
+  const ta=document.getElementById('msg'),st=document.getElementById('st'),text=ta.value.trim(),images=(attach[key(s)]||[]).slice();if((!text&&!images.length)||sending)return;
+  sending=true;st.className='st';st.textContent=images.length?`sending ${images.length} image${images.length>1?'s':''}…`:'sending…';
+  try{const r=await api('/api/send',{id:s.id,pid:s.pid,text,images});
+    if(r.ok){draft[key(s)]='';ta.value='';attach[key(s)]=[];paintAttach(s);st.className='st ok';st.textContent='delivered to '+(r.window||r.pane);setTimeout(()=>{if(st.textContent.startsWith('delivered'))st.textContent=''},4000);
+      (pending[s.id]??=[]).push({role:'user',ts:new Date().toISOString(),text:(images.length?`[${images.length} image${images.length>1?'s':''}] `:'')+text,local:true});
+      chatCache[s.id]=(chatCache[s.id]||[]).concat(pending[s.id].slice(-1));loadChat(s);setTimeout(refresh,1200)}
+    else{st.className='st bad';st.textContent=r.error}}
+  catch(e){st.className='st bad';st.textContent=String(e)}
+  sending=false;
+}
+function toast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1400)}
+let panelKey='';
+function save(){try{localStorage.setItem('deck',JSON.stringify({repoSel,filter}))}catch{}}
+function restore(){try{const o=JSON.parse(localStorage.getItem('deck')||'{}');if(o.filter)filter=o.filter;if(o.repoSel)repoSel=o.repoSel}catch{}}
+function topRepo(){return [...new Set(S().map(s=>s.cwd))].sort(repoOrder)[0]||null}
+function render(){NOW=Date.now();
+  if(!q){const vis=S().filter(x=>x.cwd===repoSel);if(vis.length&&!vis.some(x=>key(x)===sel)){const f=vis.find(isWork)||vis[0];sel=key(f)}}   // selection follows the repo
+  kpis();strip();grid();const s=S().find(x=>key(x)===sel);const k=s?[s.id,s.alive,s.status,s.upd,!!s.tmux,confirmStop].join('|'):'';
+  const focused=document.activeElement?.id==='msg';   // while typing, hold redraws for the same session, but always redraw when the session changes
+  if(k!==panelKey&&(!focused||k.split('|')[0]!==panelKey.split('|')[0])){panelKey=k;panel()}else if(s&&!focused){if(view!=='diff')loadView(s);right()}}
+async function refresh(){
+  try{const r=await fetch('/api/sessions',{cache:'no-store'});D=await r.json();
+    if(!booted){booted=true;restore();if(!repoSel||!S().some(s=>s.cwd===repoSel))repoSel=topRepo();document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('on',x.dataset.f===filter))}
+    if(!repoSel||!S().some(s=>s.cwd===repoSel))repoSel=topRepo();
+    const vis=S().filter(s=>s.cwd===repoSel);
+    if(!sel||!vis.some(s=>key(s)===sel)){const f=vis.find(isWork)||vis[0];sel=f?key(f):null}
+    document.getElementById('host').textContent=`${D.host} · tmux ${D.tmux_sessions.join(', ')||'(none)'}`;document.getElementById('hostwrap').title='press ? for keys · ↑↓ repos · ←→ sessions · enter to chat';
+    document.getElementById('refreshed').innerHTML='refreshed '+new Date(D.generated).toLocaleTimeString(undefined,{hour12:false});
+    render();
+  }catch(e){document.getElementById('refreshed').innerHTML='<span class="err">server offline</span>'}
+}
+document.getElementById('q').oninput=e=>{q=e.target.value.toLowerCase();grid()};
+document.getElementById('q').onkeydown=e=>{if(e.key==='Enter'){e.target.blur();if(shown[0]){sel=key(shown[0]);if(shown[0].cwd!==repoSel){repoSel=shown[0].cwd;save()}render()}}};
+document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{filter=b.dataset.f;document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('on',x===b));save();grid()});
+const TZ=(new Intl.DateTimeFormat(undefined,{timeZoneName:'short'}).formatToParts(new Date()).find(p=>p.type==='timeZoneName')||{}).value||'';
+function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString(undefined,{hour12:false});const z=document.getElementById('tz');if(z&&!z.textContent)z.textContent=TZ}
+let armed=null, armedMany=null;
+let followPane=null;   // pane of a session we just created: select it once it registers
+async function newSession(dir){
+  const cwd=typeof dir==='string'?dir:repoSel;if(!cwd)return;
+  const b=document.getElementById('newsess');b.disabled=true;
+  try{const r=await api('/api/new',{cwd});if(!r.ok)throw new Error(r.error||'failed');followPane=r.pane;toast('STARTING IN '+r.window);q='';document.getElementById('q').value='';
+    let tries=0;const tick=async()=>{await refresh();const s=S().find(x=>x.tmux&&x.tmux.pane===followPane);if(s){sel=key(s);repoSel=s.cwd;save();followPane=null;render();return}if(++tries<12)setTimeout(tick,1000)};setTimeout(tick,1500)}
+  catch(e){toast(String(e))}
+  b.disabled=false;
+}
+document.getElementById('newsess').onclick=newSession;
+const isEmpty=s=>!!s.pid&&!s.last;   // a registered process that never received a prompt
+async function purge(xs){
+  const names=xs.map(s=>s.name).join(', ');
+  if(!confirm(`Purge ${xs.length} empty session${xs.length>1?'s':''}?\n${names}\n\nThis stops the process and deletes its registry entry and empty transcript. Sessions with any history are left alone.`))return;
+  try{const r=await api('/api/purge',{pids:xs.map(s=>s.pid)});toast(`PURGED ${r.purged.length}${r.kept.length?' · KEPT '+r.kept.length:''}`)}catch(e){toast(String(e))}
+  refresh();
+}
+document.getElementById('purgemany').onclick=()=>{const xs=shown.filter(isEmpty);if(xs.length)purge(xs)};
+document.getElementById('stopmany').onclick=async function(){
+  const targets=shown.filter(s=>s.alive);if(!targets.length)return;
+  if(!armedMany){armedMany=setTimeout(()=>{armedMany=null;this.classList.remove('arm');grid()},5000);this.textContent=`Confirm · stop ${targets.length} session${targets.length>1?'s':''}`;this.classList.add('arm');return}
+  clearTimeout(armedMany);armedMany=null;this.disabled=true;this.textContent='Stopping…';
+  try{const r=await api('/api/stop_many',{pids:targets.map(s=>s.pid)});toast(`STOPPED ${r.stopped.length}${r.failed.length?' · FAILED '+r.failed.length:''}`)}catch(e){toast(String(e))}
+  this.classList.remove('arm');refresh();
+};
+document.getElementById('shutdown').onclick=async function(){
+  if(!armed){armed=setTimeout(()=>{armed=null;this.textContent='Shut down';this.classList.remove('arm')},4000);this.textContent='Confirm · deck only';this.classList.add('arm');return}
+  clearTimeout(armed);armed=null;this.disabled=true;this.textContent='Shutting down…';
+  try{await api('/api/shutdown',{})}catch{}
+  document.getElementById('refreshed').innerHTML='<span class="err">deck server stopped · run /control-deck or ./deck.sh to start it</span>';
+  toast('DECK SERVER STOPPED');
+};
+// Animated bot favicon: blinks, antenna pulses, eyes go amber while any session is working.
+const favC=document.createElement('canvas');favC.width=favC.height=64;const fx=favC.getContext('2d');
+let favT=0,nextBlink=20,blinkFor=0;
+function rr(x,y,w,h,r){fx.beginPath();fx.roundRect(x,y,w,h,r);}
+function drawBot(){
+  const working=S().some(isWork),eye=working?'#d9a441':'#6b94e8';
+  favT++;if(favT>=nextBlink){blinkFor=2;nextBlink=favT+20+Math.floor(Math.random()*30)}
+  const blink=blinkFor>0;if(blinkFor>0)blinkFor--;
+  const pulse=.55+.45*Math.sin(favT/3);
+  fx.clearRect(0,0,64,64);
+  const g=fx.createRadialGradient(32,22,4,32,32,44);g.addColorStop(0,'#2a2a30');g.addColorStop(1,'#0d0d0f');
+  rr(2,2,60,60,14);fx.fillStyle=g;fx.fill();fx.strokeStyle='rgba(107,148,232,.45)';fx.lineWidth=2;fx.stroke();
+  fx.strokeStyle='#a3a3ad';fx.lineWidth=2.5;fx.lineCap='round';fx.beginPath();fx.moveTo(32,14);fx.lineTo(32,8);fx.stroke();
+  fx.shadowColor='#7fb2ff';fx.shadowBlur=6*pulse;fx.fillStyle=`rgba(127,178,255,${.5+.5*pulse})`;fx.beginPath();fx.arc(32,7,3.2,0,7);fx.fill();fx.shadowBlur=0;
+  rr(13,16,38,30,10);fx.fillStyle='#161618';fx.fill();fx.strokeStyle='#303036';fx.lineWidth=2;fx.stroke();
+  fx.fillStyle='#303036';rr(9,26,4,10,2);fx.fill();rr(51,26,4,10,2);fx.fill();
+  fx.shadowColor=eye;fx.shadowBlur=working?8:5;fx.fillStyle=eye;
+  if(blink){rr(21,30,7,2,1);fx.fill();rr(36,30,7,2,1);fx.fill()}else{rr(21,26,7,9,3.5);fx.fill();rr(36,26,7,9,3.5);fx.fill()}
+  fx.shadowBlur=0;fx.strokeStyle=working?'rgba(217,164,65,.8)':'rgba(107,148,232,.75)';fx.lineWidth=2;fx.beginPath();
+  if(working){fx.moveTo(25,40);fx.lineTo(29,42);fx.lineTo(35,42);fx.lineTo(39,40)}else{fx.moveTo(25,40);fx.lineTo(39,40)}fx.stroke();
+  rr(22,48,20,8,3);fx.fillStyle='#161618';fx.fill();fx.strokeStyle='#303036';fx.stroke();
+  const link=document.getElementById('fav');link.type='image/png';link.href=favC.toDataURL('image/png');
+  const lg=document.getElementById('logo');if(lg){const lx=lg.getContext('2d');lx.imageSmoothingEnabled=true;lx.imageSmoothingQuality='high';lx.clearRect(0,0,lg.width,lg.height);lx.drawImage(favC,0,0,lg.width,lg.height)}
+}
+if(fx.roundRect){drawBot();setInterval(drawBot,150)}
+// ---- keyboard ----
+let stopArm=null;
+const typing=()=>['INPUT','TEXTAREA'].includes(document.activeElement?.tagName);
+function moveSel(d){if(!shown.length)return;let i=shown.findIndex(s=>key(s)===sel);i=Math.max(0,Math.min(shown.length-1,(i<0?0:i)+d));sel=key(shown[i]);render();
+  document.querySelector('.tab.on')?.scrollIntoView({inline:'nearest',block:'nearest'})}
+function moveRepo(d){const chips=[...document.querySelectorAll('.chip')];if(!chips.length)return;const cwds=chips.map(c=>c.dataset.cwd);let i=cwds.indexOf(repoSel);
+  i=i<0?0:Math.max(0,Math.min(cwds.length-1,i+d));repoSel=cwds[i];save();sel=null;render();document.querySelector('.chip.on')?.scrollIntoView({inline:'nearest',block:'nearest'})}
+document.addEventListener('keydown',e=>{
+  const help=document.getElementById('help');
+  if(e.key==='Escape'){if(!help.hidden){help.hidden=true;return}if(typing()){document.activeElement.blur();return}}
+  if(typing())return;
+  if(e.metaKey||e.ctrlKey||e.altKey)return;
+  const cur=S().find(x=>key(x)===sel);
+  switch(e.key){
+    case 'j':case 'ArrowDown':e.preventDefault();moveRepo(1);break;
+    case 'k':case 'ArrowUp':e.preventDefault();moveRepo(-1);break;
+    case 'l':case 'ArrowRight':e.preventDefault();moveSel(1);break;
+    case 'h':case 'ArrowLeft':e.preventDefault();moveSel(-1);break;
+    case '1':case '2':case '3':case '4':case '5':document.querySelectorAll('#seg button')[+e.key-1]?.click();break;
+    case '/':e.preventDefault();document.getElementById('q').focus();break;
+    case 'Enter':case 'i':{const t=document.getElementById('msg');if(t&&!t.disabled){e.preventDefault();t.focus()}else toast('NOT REACHABLE');break}
+    case 'g':document.getElementById('focus')?.click();break;
+    case 'r':document.getElementById('revive')?.click();break;
+    case 'n':case 'N':newSession();break;
+    case 'p':if(repoSel)togglePin(repoSel);break;
+    case 'c':document.querySelector('[data-copy^="cd "]')?.click();break;
+    case 'G':{const c=document.getElementById(view==='term'?'term':'chat');if(c)c.scrollTop=c.scrollHeight;break}
+    case 't':{const b=document.querySelector(`#viewseg button[data-v="${view==='chat'?'term':'chat'}"]`);if(b&&!b.disabled)b.click();break}
+    case 'd':{const b=document.querySelector(`#viewseg button[data-v="${view==='diff'?'chat':'diff'}"]`);if(b)b.click();break}
+    case 's':document.getElementById('stop')?.click();break;
+    case '?':help.hidden=!help.hidden;break;
+  }
+});
+document.getElementById('help').onclick=e=>{if(e.target.id==='help')e.target.hidden=true};
+document.getElementById('helpbtn').onclick=()=>{const h=document.getElementById('help');h.hidden=!h.hidden};
+tick();setInterval(tick,1000);refresh();setInterval(refresh,5000);
+setInterval(()=>{const s=S().find(x=>key(x)===sel);if(s){if(view==='diff'){if(!document.hidden)loadDiff(s)}else loadView(s)}},2000);
+setInterval(()=>{const s=S().find(x=>key(x)===sel);if(s)loadStats(s)},10000);
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+#!/bin/zsh
+# cc — start Claude Code inside a tmux window named after the current repo, so the Control Deck
+# can jump to it and send it messages. Any args are passed to claude (e.g. `cc --resume <id>`).
+name=${PWD:t}
+if [ -n "$TMUX" ]; then
+  tmux new-window -n "$name" -c "$PWD"
+else
+  tmux new-session -d -s claude -n "$name" -c "$PWD" 2>/dev/null || tmux new-window -t claude -n "$name" -c "$PWD"
+fi
+tmux send-keys -t "claude:$name" "claude $*" Enter 2>/dev/null || tmux send-keys "claude $*" Enter
+[ -z "$TMUX" ] && exec tmux attach -t claude
