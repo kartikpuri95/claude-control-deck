@@ -75,6 +75,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 var(--body)}
 .tab.closed{opacity:.6;border-style:dashed;border-color:var(--line)}
 .tab .x{border:0;background:transparent;color:var(--fg3);font:14px/1 var(--body);padding:0 2px;cursor:pointer;border-radius:3px}
 .tab .x:hover{color:var(--hi);background:var(--dead)}
+.tab input.rn{font:500 13px var(--body);color:var(--hi);background:var(--bg);border:1px solid var(--accent);border-radius:5px;padding:1px 6px;width:170px;outline:none}
 .tabnew{padding:5px 10px;font-size:15px;line-height:1}
 .seg{display:flex;background:var(--panel);border-radius:var(--r);overflow:hidden;padding:3px;gap:2px;flex:0 0 auto}
 .seg button{background:transparent;border:0;color:var(--fg2);padding:4px 8px;font:500 12px var(--body);cursor:pointer;border-radius:5px}
@@ -283,6 +284,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 var(--body)}
       <dt>r</dt><dd>revive a closed session</dd>
       <dt>n</dt><dd>new session in the selected repo</dd>
       <dt>p</dt><dd>pin / unpin the selected repo</dd>
+      <dt>e · F2</dt><dd>rename the selected session (or double-click its tab)</dd>
       <dt>t</dt><dd>toggle chat / terminal view</dd>
       <dt>d</dt><dd>toggle chat / changes (git diff) view</dd>
       <dt>c</dt><dd>copy resume command</dd>
@@ -346,7 +348,20 @@ function strip(){
   document.querySelectorAll('.chip .pin').forEach(b=>b.onclick=e=>{e.stopPropagation();togglePin(b.dataset.pin)});
 }
 let shown=[];
+// rename a session like Claude's /rename: inline box on the tab, Enter saves, Esc cancels
+let renaming=null;
+function renameTab(id){const s=S().find(x=>key(x)===id);const t=document.querySelector(`.tab[data-id="${CSS.escape(id)}"]`);if(!s||!t)return;
+  if(s.alive&&!s.tmux){toast('NOT REACHABLE · RUNNING OUTSIDE TMUX');return}
+  if(isWork(s)){toast('IT IS WORKING · RENAME WHEN IDLE');return}
+  renaming=id;const nm=t.querySelector('.nm');const inp=document.createElement('input');inp.className='rn';inp.value=s.name;inp.maxLength=60;inp.setAttribute('aria-label','New session name');
+  nm.replaceWith(inp);inp.focus();inp.select();let done=false;
+  const finish=async ok=>{if(done)return;done=true;renaming=null;const v=inp.value.trim();
+    if(ok&&v&&v!==s.name){try{const r=await api('/api/rename',{id:s.id,pid:s.pid,name:v});toast(r.ok?'RENAMED · '+r.name:r.error);if(r.ok)s.name=r.name}catch(e){toast(String(e))}}
+    grid();panelKey='';render();setTimeout(refresh,1500)};
+  inp.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter'){e.preventDefault();finish(true)}else if(e.key==='Escape'){e.preventDefault();finish(false)}};
+  inp.onblur=()=>finish(true);inp.onclick=e=>e.stopPropagation();inp.ondblclick=e=>e.stopPropagation()}
 function grid(){
+  if(renaming)return;   // don't repaint the tabs under the rename box
   // with a search query the list spans every repo; otherwise it is the selected repo only
   const xs=S().filter(s=>(filter==='all'||(filter==='tmux'?!!s.tmux:bucket(s)===filter))&&(q?(s.name+' '+s.cwd+' '+(s.last?.text||'')).toLowerCase().includes(q):s.cwd===repoSel))
     .sort((a,b)=>isWork(b)-isWork(a)||b.upd-a.upd);
@@ -360,6 +375,7 @@ function grid(){
     </div>`).join('')||`<div class="hint" style="margin:0 6px">No sessions match.</div>`;
   const pick=id=>{sel=id;const s=S().find(x=>key(x)===id);if(s&&s.cwd!==repoSel){repoSel=s.cwd;save()}render()};   // a search hit also switches the repo
   document.querySelectorAll('.tab').forEach(c=>{c.onclick=e=>{if(e.target.dataset.stop)return;pick(c.dataset.id)};c.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick(c.dataset.id)}}});
+  document.querySelectorAll('.tab').forEach(c=>c.ondblclick=e=>{if(!e.target.dataset.stop)renameTab(c.dataset.id)});
   document.querySelectorAll('.tab .x').forEach(x=>x.onclick=e=>{e.stopPropagation();const s=S().find(y=>key(y)===x.dataset.stop);if(s&&confirm(`Stop ${s.name}?`))api('/api/stop',{id:s.id,pid:s.pid}).then(r=>{toast(r.ok?'STOPPED':r.error);refresh()})});
 }
 let view='chat';   // chat | term
@@ -761,6 +777,7 @@ document.addEventListener('keydown',e=>{
     case 'r':document.getElementById('revive')?.click();break;
     case 'n':case 'N':newSession();break;
     case 'p':if(repoSel)togglePin(repoSel);break;
+    case 'F2':case 'e':e.preventDefault();if(sel)renameTab(sel);break;
     case 'c':document.querySelector('[data-copy^="cd "]')?.click();break;
     case 'G':{const c=document.getElementById(view==='term'?'term':'chat');if(c)c.scrollTop=c.scrollHeight;break}
     case 't':{const b=document.querySelector(`#viewseg button[data-v="${view==='chat'?'term':'chat'}"]`);if(b&&!b.disabled)b.click();break}

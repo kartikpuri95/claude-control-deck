@@ -165,6 +165,26 @@ CLOSED_DAYS = 60
 CLOSED_PER_REPO = 5
 
 _closed_cache = {}
+_title_cache = {}
+def custom_title(tp):
+    """The name given with /rename (Claude appends a custom-title line to the transcript); None if never renamed."""
+    try: st = os.stat(tp)
+    except OSError: return None
+    k = (str(tp), st.st_size, st.st_mtime)
+    if k in _title_cache: return _title_cache[k]
+    title = None
+    try:
+        with open(tp, "rb") as f:
+            f.seek(max(0, st.st_size - 1_000_000)); tail = f.read().decode("utf-8", "ignore")
+        for line in reversed(tail.splitlines()):
+            if '"custom-title"' in line and '"customTitle"' in line:
+                try: title = json.loads(line).get("customTitle") or None
+                except ValueError: continue
+                break
+    except OSError: pass
+    _title_cache[k] = title
+    return title
+
 def closed_sessions(hist, live_ids, now_ms):
     k = (id(hist), tuple(sorted(live_ids)))
     c = _closed_cache.get("c")
@@ -182,7 +202,7 @@ def _closed_sessions(hist, live_ids, now_ms):
         if not os.path.isdir(cwd): continue        # repo deleted — nothing to revive into
         tp = transcript_path(cwd, sid)
         if not tp: continue
-        out.append(dict(id=sid, pid=None, name=f"{os.path.basename(cwd.rstrip('/'))}-{sid[:4]}", cwd=cwd,
+        out.append(dict(id=sid, pid=None, name=custom_title(tp) or f"{os.path.basename(cwd.rstrip('/'))}-{sid[:4]}", cwd=cwd,
                         repo=os.path.basename(cwd.rstrip("/")), status="closed", started=h["first"], upd=h["ts"],
                         version=None, alive=False, tty=None, tmux=None, last=dict(ts=h["ts"], text=h["text"]),
                         last_assistant=None, last_tool=None, buckets=[0]*24, transcript=str(tp), prompts=h["n"]))

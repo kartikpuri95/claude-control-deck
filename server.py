@@ -391,6 +391,28 @@ class H(SimpleHTTPRequestHandler):
                 tmux("send-keys", "-t", f"claude:{s['name']}", cmd, "Enter")
                 _cache["t"] = 0
                 return self._json(200, {"ok": True, "window": f"claude:{s['name']}"})
+            if self.path == "/api/rename":
+                import re as _re
+                name = _re.sub(r"[^A-Za-z0-9._-]", "", _re.sub(r"\s+", "-", (body.get("name") or "").strip()))[:60].strip("-.")
+                if not name: return self._json(400, {"error": "use letters, numbers, - _ ."})
+                if s["alive"] and s["tmux"]:
+                    # let Claude do it, exactly like typing /rename: it updates its registry and the transcript
+                    if s["status"] in ("busy", "shell"): return self._json(409, {"error": "it is working, rename it when it is idle"})
+                    pane = s["tmux"]["pane"]
+                    tmux("send-keys", "-t", pane, "-l", f"/rename {name}"); time.sleep(0.15)
+                    tmux("send-keys", "-t", pane, "Enter")
+                    try: tmux("rename-window", "-t", pane, name)
+                    except Exception: pass
+                elif not s["alive"] and s.get("transcript"):
+                    # closed: append the same records /rename writes; Claude picks them up on resume
+                    with open(s["transcript"], "a") as f:
+                        f.write(json.dumps({"type": "custom-title", "customTitle": name, "sessionId": s["id"]}, separators=(",", ":")) + "\n")
+                        f.write(json.dumps({"type": "agent-name", "agentName": name, "sessionId": s["id"]}, separators=(",", ":")) + "\n")
+                    collector._closed_cache.clear()
+                else:
+                    return self._json(409, {"error": "not reachable: running outside tmux"})
+                _cache["t"] = 0
+                return self._json(200, {"ok": True, "name": name})
             if self.path == "/api/stop":
                 if not s["alive"]: return self._json(409, {"error": "already stopped"})
                 ok = stop_session(s); _cache["t"] = 0
