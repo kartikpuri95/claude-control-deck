@@ -330,7 +330,7 @@ def collect():
         tail = tail_transcript(tp, now_ms) if is_alive else dict(last_assistant=None, last_tool=None, last_user=None, buckets=[0]*24, turns=0)
         out.append(dict(
             id=sid, pid=pid, name=s.get("name"), cwd=cwd, repo=os.path.basename(cwd.rstrip("/")),
-            status=s.get("status"), started=s.get("startedAt"), upd=s.get("updatedAt") or s.get("startedAt"),
+            status=s.get("status"), waiting_for=s.get("waitingFor"), started=s.get("startedAt"), upd=s.get("updatedAt") or s.get("startedAt"),
             version=s.get("version"), alive=is_alive,
             tty=tty_of(pid, table) if is_alive else None,
             tmux=pane_for(pid, panes, table, s.get("tmux")) if is_alive else None,

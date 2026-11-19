@@ -45,6 +45,59 @@ def tmux(*args):
     if r.returncode: raise RuntimeError(r.stderr.strip() or "tmux failed")
     return r.stdout
 
+import re as _re
+_NUM = _re.compile(r"^(\d+)\.\s+")
+_RULE = set("─━-╌┄┈ ")
+def parse_prompt(screen):
+    """Read whatever Claude is asking off the pane: AskUserQuestion, a permission prompt, the folder-trust
+    check. They all share a shape: options lined up under a ❯ cursor, above a footer such as
+    'Enter to select · Esc to cancel'. Returns None when nothing is being asked."""
+    L = [l.replace("│", " ").rstrip() for l in screen.rstrip("\n").split("\n")]
+    foot = next((i for i in range(len(L) - 1, max(-1, len(L) - 10), -1)
+                 if any(k in L[i] for k in ("Enter to select", "Enter to confirm", "Esc to cancel", "to navigate"))), None)
+    if foot is None: return None
+    cur = next((i for i in range(foot - 1, max(-1, foot - 40), -1) if L[i].lstrip().startswith("❯")), None)
+    if cur is None: return None
+    col = L[cur].index("❯") + 1
+    while col < len(L[cur]) and L[cur][col] == " ": col += 1          # where option text starts
+    rule = lambda l: l.strip() and set(l.strip()) <= _RULE
+    is_opt = lambda l: len(l) > col and l[col] != " " and l[:col].strip() in ("", "❯")
+    opts, pend, i = [], [], foot - 1
+    while i >= 0:
+        l = L[i]
+        if not l.strip() or rule(l):
+            pend = []; i -= 1; continue
+        if is_opt(l):
+            opts.append(dict(label=l[col:].strip(), on=l[:col].strip() == "❯", desc=" ".join(reversed(pend)))); pend = []
+        elif len(l) > col and not l[:col + 1].strip():
+            pend.append(l.strip())                                     # description, indented under its option
+            if len(pend) > 4: break
+        else:
+            break
+        i -= 1
+    if not opts: return None
+    opts.reverse()
+    for k, o in enumerate(opts):
+        o["i"] = k
+        m = _NUM.match(o["label"])
+        if m: o["n"] = int(m.group(1)); o["label"] = o["label"][m.end():]
+        else: o["n"] = k + 1
+        o["typed"] = o["label"].rstrip(".").lower() in ("type something", "other")
+    # question text: the lines above the options, through dotted separators, stopping at a full rule
+    q = []
+    while i >= 0 and len(q) < 10:
+        l = L[i]
+        if l.strip() and set(l.strip()) <= set("─━"): break
+        if l.strip() and not rule(l) and not l.strip().startswith("Tip:"): q.append(l.strip())   # skip Claude's tips
+        i -= 1
+    q.reverse()
+    header = None
+    if q and q[0][:1] in "☐☒✔□": header = q[0][1:].strip(); q = q[1:]
+    labels = " ".join(o["label"] for o in opts)
+    return dict(header=header, question="\n".join(q[-8:]), options=opts,
+                cursor=next((o["i"] for o in opts if o["on"]), 0),
+                multi=any(t in labels for t in ("[ ]", "[✔]", "[x]", "[×]")), footer=L[foot].strip())
+
 def stop_session(s):
     """Graceful /exit via tmux when possible, then SIGTERM; closes the tmux window. Returns True if the process ended."""
     pane = s["tmux"]["pane"] if s["tmux"] else None
@@ -275,6 +328,13 @@ class H(SimpleHTTPRequestHandler):
             from urllib.parse import urlparse, parse_qs
             cwd = parse_qs(urlparse(self.path).query).get("cwd", [""])[0]
             return self._json(200, git_info(cwd))
+        if self.path.startswith("/api/prompt"):
+            from urllib.parse import urlparse, parse_qs
+            s = find({"pid": parse_qs(urlparse(self.path).query).get("pid", [""])[0]})
+            if not s or not s["alive"] or not s["tmux"]: return self._json(200, {"prompt": None})
+            try: screen = tmux("capture-pane", "-p", "-t", s["tmux"]["pane"])
+            except Exception: return self._json(200, {"prompt": None})
+            return self._json(200, {"prompt": parse_prompt(screen), "status": s["status"], "screen": "\n".join(screen.rstrip().split("\n")[-30:])})
         if self.path.startswith("/api/live"):
             # what the terminal shows right now, for a session that is mid-reply (the transcript
             # only gets the reply once it is complete)
@@ -423,6 +483,25 @@ class H(SimpleHTTPRequestHandler):
         if not s["tmux"]: return self._json(409, {"error": "session is not inside tmux — restart it with bin/cc"})
         pane = s["tmux"]["pane"]
         try:
+            if self.path == "/api/answer":
+                # pick option n the way you would: arrow keys to it, type your own text if given, Enter
+                pr = parse_prompt(tmux("capture-pane", "-p", "-t", pane))
+                if not pr: return self._json(409, {"error": "no question is showing any more"})
+                k = int(body.get("i", -1)); text = (body.get("text") or "").strip()
+                if not 0 <= k < len(pr["options"]): return self._json(400, {"error": "no such option"})
+                if (body.get("label") or pr["options"][k]["label"]) != pr["options"][k]["label"]:
+                    return self._json(409, {"error": "the question changed, look again"})
+                d = k - pr["cursor"]
+                for _ in range(abs(d)): tmux("send-keys", "-t", pane, "Down" if d > 0 else "Up"); time.sleep(0.06)
+                time.sleep(0.15)
+                if text: tmux("send-keys", "-t", pane, "-l", text); time.sleep(0.25)
+                tmux("send-keys", "-t", pane, "Enter")
+                return self._json(200, {"ok": True})
+            if self.path == "/api/key":
+                k = {"up": "Up", "down": "Down", "enter": "Enter", "esc": "Escape", "space": "Space", "tab": "Tab", "btab": "BTab"}.get(body.get("key"))
+                if not k: return self._json(400, {"error": "key not allowed"})
+                tmux("send-keys", "-t", pane, k)
+                return self._json(200, {"ok": True})
             if self.path == "/api/send":
                 text = (body.get("text") or "").strip()
                 images = body.get("images") or []

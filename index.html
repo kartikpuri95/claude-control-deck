@@ -14,7 +14,7 @@
   --bg:#111113; --bg2:#151518; --panel:#19191c; --panel2:#1f1f23; --line:#26262b; --line2:#34343a;
   --fg:#e0e0e6; --fg2:#adadb7; --fg3:#7e7e89; --hi:#f4f4f7;
   --accent:#6b94e8; --accent-dim:rgba(107,148,232,.16); --accent-ink:#ffffff;
-  --live:#5fbf95; --work:#d9a441; --idle:#7c8aa5; --dead:#d96a6a; --me:#6b94e8; --ok:#5fbf95; --sky:#8db4f0;
+  --live:#5fbf95; --work:#d9a441; --ask:#b48cf0; --idle:#7c8aa5; --dead:#d96a6a; --me:#6b94e8; --ok:#5fbf95; --sky:#8db4f0;
   --display:"Inter",system-ui,sans-serif;
   --body:"Inter",system-ui,-apple-system,sans-serif;
   --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -51,6 +51,25 @@ body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 var(--body)}
 .chip.on{background:var(--accent-dim);border-color:rgba(107,148,232,.35)}
 .chip .r{font-size:13px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 .chip.on .r{color:var(--hi)}
+.chip .wt{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ask);margin-left:6px;vertical-align:middle;animation:pulse 1.2s ease-in-out infinite}
+.kpi.ask b{color:var(--ask)}
+.msg.ask{align-self:stretch;background:var(--panel2);border:1px solid var(--ask);border-radius:var(--r2);padding:12px 14px;max-width:none}
+.msg.ask small{color:var(--ask);font-weight:600}
+.ask .hd{font-weight:600;color:var(--hi);margin:2px 0 4px}
+.ask .q{white-space:pre-wrap;color:var(--fg);margin:2px 0 10px;font-size:13.5px;line-height:1.5}
+.ask .q code{font:12px var(--mono)}
+.ask .opts{display:flex;flex-direction:column;gap:6px}
+.ask .opt{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:2px;background:var(--panel);border:1px solid var(--line2);border-radius:var(--r);padding:8px 12px;color:var(--hi);font:500 13px var(--body);cursor:pointer}
+.ask .opt:hover{border-color:var(--ask)}
+.ask .opt.on{border-color:rgba(180,140,240,.7)}
+.ask .opt small{color:var(--fg3);font-weight:400}
+.ask .typed{display:flex;gap:6px}
+.ask .typed input{flex:1;background:var(--bg);border:1px solid var(--line2);border-radius:var(--r);padding:7px 10px;color:var(--hi);font:13px var(--body);outline:none}
+.ask .typed input:focus{border-color:var(--ask)}
+.ask .keys{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center;color:var(--fg3);font-size:12px}
+.ask .keys button{background:var(--panel);border:1px solid var(--line2);border-radius:6px;color:var(--fg2);font:12px var(--mono);padding:3px 8px;cursor:pointer}
+.ask .keys button:hover{color:var(--hi);border-color:var(--fg3)}
+.ask pre{margin:0 0 8px;font:12px/1.45 var(--mono);white-space:pre-wrap;color:var(--fg2);max-height:30vh;overflow:auto}
 .chip .wk{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--work);margin-left:6px;vertical-align:middle;animation:pulse 1.6s ease-in-out infinite}
 .chip .pin{border:0;background:transparent;color:var(--fg3);padding:2px;width:18px;height:18px;border-radius:4px;cursor:pointer;opacity:0;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
 .chip .pin svg{width:12px;height:12px}
@@ -304,8 +323,9 @@ body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 var(--body)}
 let booted=false, D={sessions:[]}, NOW=Date.now(), filter='all', q='', repoSel=null, sel=null, draft={}, sending=false, confirmStop=null;
 const S=()=>D.sessions;
 const isWork=s=>s.alive&&(s.status==='busy'||s.status==='shell');
-const color=s=>s.status==='closed'?'var(--fg3)':!s.alive?'var(--dead)':isWork(s)?'var(--work)':(NOW-s.upd<6*3600e3?'var(--live)':'var(--idle)');
-const label=s=>s.status==='closed'?'closed':!s.alive?'stale':s.status==='busy'?'working':s.status==='shell'?'running shell':(NOW-s.upd<6*3600e3?'live · idle':'idle');
+const isWait=s=>s.alive&&s.status==='waiting';   // Claude is asking you something (question, permission, trust)
+const color=s=>s.status==='closed'?'var(--fg3)':!s.alive?'var(--dead)':isWait(s)?'var(--ask)':isWork(s)?'var(--work)':(NOW-s.upd<6*3600e3?'var(--live)':'var(--idle)');
+const label=s=>s.status==='closed'?'closed':!s.alive?'stale':isWait(s)?'waiting for you'+(s.waiting_for?' · '+s.waiting_for:''):s.status==='busy'?'working':s.status==='shell'?'running shell':(NOW-s.upd<6*3600e3?'live · idle':'idle');
 const bucket=s=>!s.alive?'dead':isWork(s)?'work':'live';
 const short=p=>p.replace(/^\/Users\/[^/]+\//,'~/');
 const ago=t=>{if(!t)return'—';const d=NOW-t;if(d<60e3)return'just now';if(d<3600e3)return Math.round(d/60e3)+'m ago';if(d<86400e3)return Math.round(d/3600e3)+'h ago';return Math.round(d/86400e3)+'d ago'};
@@ -323,9 +343,10 @@ const repoOrder=(a,b)=>{const x=group(a),y=group(b);return (x<y?-1:x>y?1:0)||a.s
 const tmuxName=s=>s.tmux?`${s.tmux.session}:${s.tmux.window} ${s.tmux.window_name}`:null;
 
 function kpis(){
+  const wait=S().filter(isWait).length;document.title=(wait?`(${wait}) `:'')+'Claude Control Deck';
   const live=S().filter(s=>s.alive).length,work=S().filter(isWork).length,dead=S().filter(s=>!s.alive).length,tm=S().filter(s=>s.tmux).length;
   document.getElementById('kpis').innerHTML=`
-    <span class="kpi live"><b>${live}</b> live</span><span class="kpi work"><b>${work}</b> working</span><span class="kpi tmux"><b>${tm}</b> in tmux</span><span class="kpi"><b>${new Set(S().map(s=>s.cwd)).size}</b> repos</span><span class="kpi dead"><b>${dead}</b> closed</span>`;
+    ${wait?`<span class="kpi ask"><b>${wait}</b> need you</span>`:''}<span class="kpi live"><b>${live}</b> live</span><span class="kpi work"><b>${work}</b> working</span><span class="kpi tmux"><b>${tm}</b> in tmux</span><span class="kpi"><b>${new Set(S().map(s=>s.cwd)).size}</b> repos</span><span class="kpi dead"><b>${dead}</b> closed</span>`;
 }
 // pinned repos: kept in this browser, shown in their own group above Work, in the order you pinned them
 let pins=[];try{pins=JSON.parse(localStorage.getItem('deckPins')||'[]')}catch{}
@@ -337,7 +358,7 @@ function strip(){
   const rows=Object.entries(m).filter(([c])=>!pins.includes(c)).sort((a,b)=>repoOrder(a[0],b[0]));
   const chip=([cwd,xs],isPin)=>`
     <div class="chip ${repoSel===cwd?'on':''} ${isPin?'pinned':''}" role="button" tabindex="0" data-cwd="${esc(cwd)}" title="${esc(short(cwd))} · ${xs.length} session${xs.length>1?'s':''} · last ${ago(Math.max(...xs.map(s=>s.upd)))}">
-      <span class="r">${esc(xs[0].repo)}${xs.some(isWork)?'<span class="wk" title="working"></span>':''}</span>
+      <span class="r">${esc(xs[0].repo)}${xs.some(isWait)?'<span class="wt" title="waiting for you"></span>':xs.some(isWork)?'<span class="wk" title="working"></span>':''}</span>
       <button class="pin" data-pin="${esc(cwd)}" title="${isPin?'Unpin':'Pin to top'} (p)" aria-label="${isPin?'Unpin':'Pin'} ${esc(xs[0].repo)}">${PIN}</button>
       <span class="c">${xs.length}</span>
     </div>`;
@@ -364,13 +385,13 @@ function grid(){
   if(renaming)return;   // don't repaint the tabs under the rename box
   // with a search query the list spans every repo; otherwise it is the selected repo only
   const xs=S().filter(s=>(filter==='all'||(filter==='tmux'?!!s.tmux:bucket(s)===filter))&&(q?(s.name+' '+s.cwd+' '+(s.last?.text||'')).toLowerCase().includes(q):s.cwd===repoSel))
-    .sort((a,b)=>isWork(b)-isWork(a)||b.upd-a.upd);
+    .sort((a,b)=>isWait(b)-isWait(a)||isWork(b)-isWork(a)||b.upd-a.upd);
   shown=xs;
   const sm=document.getElementById('stopmany');const n=xs.filter(s=>s.alive).length;if(sm&&!sm.classList.contains('arm')){sm.textContent=`Stop shown (${n})`;sm.disabled=!n}
   const pm=document.getElementById('purgemany');const ne=xs.filter(isEmpty).length;if(pm){pm.hidden=!ne;pm.textContent=`Purge empty (${ne})`}
   document.getElementById('tabs').innerHTML=xs.map(s=>`
     <div class="tab ${key(s)===sel?'on':''} ${s.status==='closed'?'closed':''}" style="--s:${color(s)}" data-id="${key(s)}" title="${esc(s.last?.text||'no prompt yet')} · ${esc(short(s.cwd))}" role="tab" tabindex="0">
-      <span class="dot ${isWork(s)?'pulse':''}" style="background:${color(s)}"></span><span class="nm">${esc(q?s.repo+' / '+s.name:s.name)}</span>
+      <span class="dot ${isWork(s)||isWait(s)?'pulse':''}" style="background:${color(s)}"></span><span class="nm">${esc(q?s.repo+' / '+s.name:s.name)}</span>
       ${s.alive?`<button class="x" data-stop="${key(s)}" title="Stop this session">×</button>`:''}
     </div>`).join('')||`<div class="hint" style="margin:0 6px">No sessions match.</div>`;
   const pick=id=>{sel=id;const s=S().find(x=>key(x)===id);if(s&&s.cwd!==repoSel){repoSel=s.cwd;save()}render()};   // a search hit also switches the repo
@@ -396,12 +417,12 @@ function panel(){
     <div class="diffv" id="diffv" ${view==='diff'?'':'hidden'}></div>
     <div class="composer">
       <div class="acwrap">
-        <textarea id="msg" placeholder="${reach?'Message this session. Enter sends, Shift+Enter for a new line. / for commands, @ for files, paste images.':'Not reachable: not running inside tmux. Stop it, then Revive.'}" ${reach?'':'disabled'}>${esc(draft[key(s)]||'')}</textarea>
+        <textarea id="msg" placeholder="${isWait(s)?'Claude is waiting for your answer above. Answer it there first.':reach?'Message this session. Enter sends, Shift+Enter for a new line. / for commands, @ for files, paste images.':'Not reachable: not running inside tmux. Stop it, then Revive.'}" ${reach&&!isWait(s)?'':'disabled'}>${esc(draft[key(s)]||'')}</textarea>
         <div class="ac" id="ac" hidden></div>
       </div>
       <div class="attach" id="attach"></div>
       <div class="row">
-        <button class="btn" id="send" ${reach?'':'disabled'}>Send ↵</button>
+        <button class="btn" id="send" ${reach&&!isWait(s)?'':'disabled'}>Send ↵</button>
         <span class="st" id="st"></span>
       </div>
     </div>`;
@@ -603,6 +624,21 @@ function liveTail(pane,turns){
   for(const t of turns.slice(u+1)){if(t.role!=='assistant')continue;const k=key(t.text.split('\n')[0]).slice(0,30);if(!k)continue;
     for(let i=start;i<L.length;i++)if(/^\s*[●⏺]/.test(L[i])&&normMsg(L[i].replace(/[*`#_]/g,'')).includes(k)){let j=i+1;while(j<L.length&&!/^\S/.test(L[j]))j++;start=j;break}}
   return L.slice(start).join('\n').replace(/^\s*\n/,'').replace(/^\s+(?=\S)/,'')}
+// Claude is asking: show the question with its options as buttons; keys as a fallback for anything unusual
+function askCard(p,screen){
+  const keys=`<div class="keys">keys: <button data-key="up">↑</button><button data-key="down">↓</button><button data-key="space">space</button><button data-key="tab">tab</button><button data-key="enter">enter</button><button data-key="esc">esc</button></div>`;
+  if(!p)return `<div class="msg ask"><small>Claude is waiting for you</small><pre>${esc(screen||'')}</pre>${keys}</div>`;
+  const opts=p.options.map(o=>o.typed
+    ?`<div class="typed"><input class="ask-txt" data-i="${o.i}" data-label="${esc(o.label)}" placeholder="${esc(o.label.replace(/\.$/,''))}: your own answer, Enter to send"></div>`
+    :`<button class="opt ${o.on?'on':''}" data-ans="${o.i}" data-label="${esc(o.label)}">${o.n}. ${esc(o.label)}${o.desc?`<small>${esc(o.desc)}</small>`:''}</button>`).join('');
+  return `<div class="msg ask"><small>Claude is asking${p.multi?' · pick several in the terminal':''}</small>${p.header?`<div class="hd">${esc(p.header)}</div>`:''}<div class="q">${esc(p.question)}</div><div class="opts">${opts}</div>${keys}</div>`}
+async function answer(body){const s=S().find(x=>key(x)===sel);if(!s)return;
+  try{const r=await api(body.key?'/api/key':'/api/answer',{id:s.id,pid:s.pid,...body});if(!r.ok)toast(r.error||'FAILED');else if(!body.key)toast('ANSWERED')}catch(e){toast(String(e))}
+  chatVer[s.id]=null;setTimeout(()=>{refresh();loadChat(s)},700)}
+document.addEventListener('click',e=>{const b=e.target.closest('.ask [data-ans],.ask [data-key]');if(!b)return;
+  if(b.dataset.key)answer({key:b.dataset.key});else{b.disabled=true;answer({i:+b.dataset.ans,label:b.dataset.label})}});
+document.addEventListener('keydown',e=>{const t=e.target;if(!t.classList||!t.classList.contains('ask-txt')||e.key!=='Enter')return;e.preventDefault();e.stopPropagation();
+  const v=t.value.trim();if(v){t.disabled=true;answer({i:+t.dataset.i,label:t.dataset.label,text:v})}},true);
 async function loadChat(s){
   const box=document.getElementById('chat');if(!box)return;
   const paint=turns=>{const b=document.getElementById('chat');if(!b)return;
@@ -611,23 +647,25 @@ async function loadChat(s){
     if(b.dataset.sig===html0&&b.dataset.sid===s.id)return;
     const atBottom=b.dataset.sid!==s.id||b.scrollHeight-b.scrollTop-b.clientHeight<40;
     const top=b.scrollTop;b.dataset.sig=html0;b.dataset.sid=s.id;
-    b.innerHTML=turns.length?turns.map(t=>t.role==='tool'?`<div class="msg tool">▶ ${esc(t.text.replace(/mcp__[\w-]+?__(?:[\w-]+?__)*?([a-z_]+)(?=,|$)/g,'$1'))}</div>`:t.role==='live'?`<div class="msg live"><small>claude · working, live from the terminal</small><pre>${esc(t.text)}</pre></div>`:
+    b.innerHTML=turns.length?turns.map(t=>t.role==='tool'?`<div class="msg tool">▶ ${esc(t.text.replace(/mcp__[\w-]+?__(?:[\w-]+?__)*?([a-z_]+)(?=,|$)/g,'$1'))}</div>`:t.role==='ask'?askCard(t.p,t.screen):t.role==='live'?`<div class="msg live"><small>claude · working, live from the terminal</small><pre>${esc(t.text)}</pre></div>`:
       `<div class="msg ${t.role}"><small>${t.role==='user'?'you':'claude'} · ${t.local?'sent':agoIso(t.ts)}</small>${t.role==='user'?esc(t.text):'<div class="md">'+renderMd(t.text)+'</div>'}</div>`).join('')
       :'<div class="empty">no messages in this transcript</div>';
     b.scrollTop=atBottom?b.scrollHeight:top};
   if(chatCache[s.id])paint(chatCache[s.id]);
   chatFor=s.id;
   try{const r=await fetch('/api/history?id='+encodeURIComponent(s.id)+(chatVer[s.id]?'&v='+encodeURIComponent(chatVer[s.id]):''),{cache:'no-store'});const d=await r.json();
-    if(d.same&&!isWork(s)&&!(pending[s.id]||[]).length){   // nothing new and nothing in flight: just drop a leftover live bubble
-      const c=chatCache[s.id]||[];if(c.some(t=>t.role==='live')){chatCache[s.id]=c.filter(t=>t.role!=='live');if(chatFor===s.id)paint(chatCache[s.id])}
+    if(d.same&&!isWork(s)&&!isWait(s)&&!(pending[s.id]||[]).length){   // nothing new and nothing in flight: just drop a leftover live bubble or question card
+      const c=chatCache[s.id]||[];if(c.some(t=>t.role==='live'||t.role==='ask')){chatCache[s.id]=c.filter(t=>t.role!=='live'&&t.role!=='ask');if(chatFor===s.id)paint(chatCache[s.id])}
       return}
     if(d.v)chatVer[s.id]=d.v;
-    let turns=d.same?(chatCache[s.id]||[]).filter(t=>t.role!=='live'&&!t.local):(d.turns||[]);
+    let turns=d.same?(chatCache[s.id]||[]).filter(t=>t.role!=='live'&&t.role!=='ask'&&!t.local):(d.turns||[]);
     const sentTs=t=>Date.parse(t.ts)||0;
     const pend=(pending[s.id]||[]).filter(p=>{const k=normMsg(p.text);
       // drop the local copy once the transcript has it, or already has a later user turn
       return !turns.some(t=>t.role==='user'&&(normMsg(t.text)===k||(k&&normMsg(t.text).endsWith(k))))&&!turns.some(t=>t.role==='user'&&sentTs(t)>sentTs(p)+5000)});
     pending[s.id]=pend; turns=turns.concat(pend);
+    if(isWait(s)&&s.tmux){try{const pr=await (await fetch('/api/prompt?pid='+s.pid,{cache:'no-store'})).json();
+      if(pr.prompt||pr.screen)turns=turns.concat({role:'ask',p:pr.prompt,screen:pr.prompt?'':pr.screen,text:JSON.stringify(pr.prompt)||pr.screen})}catch{}}
     if(isWork(s)&&s.tmux){try{const lv=await (await fetch('/api/live?pid='+s.pid+'&id='+encodeURIComponent(s.id),{cache:'no-store'})).json();
       if(lv.live){const txt=liveTail(lv.live,turns);if(txt.trim())turns=turns.concat({role:'live',text:txt})}}catch{}}
     chatCache[s.id]=turns;if(chatFor===s.id)paint(turns)}
