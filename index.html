@@ -377,7 +377,7 @@ function renameTab(id){const s=S().find(x=>key(x)===id);const t=document.querySe
   renaming=id;const nm=t.querySelector('.nm');const inp=document.createElement('input');inp.className='rn';inp.value=s.name;inp.maxLength=60;inp.setAttribute('aria-label','New session name');
   nm.replaceWith(inp);inp.focus();inp.select();let done=false;
   const finish=async ok=>{if(done)return;done=true;renaming=null;const v=inp.value.trim();
-    if(ok&&v&&v!==s.name){try{const r=await api('/api/rename',{id:s.id,pid:s.pid,name:v});toast(r.ok?'RENAMED · '+r.name:r.error);if(r.ok)s.name=r.name}catch(e){toast(String(e))}}
+    if(ok&&v&&v!==s.name){try{const r=await api('/api/rename',{id:s.id,pid:s.pid,name:v});toast(r.ok?'RENAMED · '+r.name:r.error);if(r.ok){s.name=r.name;const cur=S().find(x=>x.id===s.id);if(cur)cur.name=r.name}}catch(e){toast(String(e))}}
     grid();panelKey='';render();setTimeout(refresh,1500)};
   inp.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter'){e.preventDefault();finish(true)}else if(e.key==='Escape'){e.preventDefault();finish(false)}};
   inp.onblur=()=>finish(true);inp.onclick=e=>e.stopPropagation();inp.ondblclick=e=>e.stopPropagation()}
